@@ -700,6 +700,97 @@ enum DebugWebPage {
 
     const $ = id => document.getElementById(id);
 
+    // ===== Language: Chinese when the browser prefers it, English otherwise =====
+    const I18N_ZH = ((navigator.languages && navigator.languages[0]) || navigator.language || '').toLowerCase().startsWith('zh');
+    // English for the page's Chinese text, keyed by the Chinese.
+    const I18N_EN = {
+      "Apple TV Remote - 运行日志与系统诊断 (Swift Host)": "Apple TV Remote - Logs and Diagnostics (Swift Host)",
+      "返回遥控控制台 (Port 8765)": "Back to the remote console (port 8765)",
+      "← 返回遥控面板 (8765)": "← Back to Remote Panel (8765)",
+      "🛠️ Apple TV Remote 系统运行日志": "🛠️ Apple TV Remote System Log",
+      "● 后台进程检查中...": "● Checking background process...",
+      "📱 手机状态检查中...": "📱 Checking iPhone...",
+      "日志物理文件路径 (Swift Managed)": "Log file path (managed by the Swift app)",
+      "复制路径": "Copy Path",
+      "终端实时查看命令 (Terminal Follow)": "Follow in Terminal",
+      "复制命令": "Copy Command",
+      "架构与服务端口 (Architecture & Ports)": "Architecture & Ports",
+      "重启引擎": "Restart Engine",
+      "🔄 刷新日志": "🔄 Refresh Log",
+      "⏱️ 自动刷新 (2s)": "⏱️ Auto Refresh (2s)",
+      "向 Swift 发起重启后台 atv-cli 进程请求": "Ask the Swift app to restart the atv-cli background process",
+      "🔄 重启进程": "🔄 Restart Process",
+      "清空本地 atv-core.log 文件内容": "Empty the local atv-core.log file",
+      "🧹 清空文件": "🧹 Empty File",
+      "全部": "All",
+      "过滤关键词...": "Filter...",
+      "显示最近 100 行": "Last 100 lines",
+      "显示最近 300 行": "Last 300 lines",
+      "显示最近 500 行": "Last 500 lines",
+      "显示最近 1000 行": "Last 1000 lines",
+      "显示全部行": "All lines",
+      "自动滚屏": "Auto-scroll",
+      "复制当前筛选出的日志文本": "Copy the filtered log lines",
+      "📋 复制": "📋 Copy",
+      "下载完整日志文件": "Download the whole log file",
+      "⬇️ 导出文件": "⬇️ Export",
+      "清空当前界面的展示": "Clear what this page shows",
+      "🗑️ 清屏": "🗑️ Clear View",
+      "正在加载...": "Loading...",
+      "更新时间: --:--:--": "Updated: --:--:--",
+      "快捷键:": "Shortcuts:",
+      "刷新 |": "refresh |",
+      "搜索": "search",
+      "正在获取系统运行日志...": "Fetching the system log...",
+      "请稍候，Swift Web Server 正在读取日志文件。": "One moment, the Swift web server is reading the log file.",
+      "💡 Swift 宿主调试接口 (Swift API Endpoints on :8766):": "💡 Swift host API endpoints (on :8766):",
+      "已成功复制到剪贴板": "Copied to the clipboard",
+      "已复制: ": "Copied: ",
+      "复制失败，请手动选择": "Couldn't copy. Please select the text by hand.",
+      "⏸️ 自动刷新 (已暂停)": "⏸️ Auto Refresh (paused)",
+      "当前没有匹配的日志行": "No log lines match",
+      "确定要通过 Swift 宿主重启后台 atv-cli 核心引擎吗？": "Restart the atv-cli engine through the Swift app?",
+      "正在请求重启后台服务...": "Restarting the background service...",
+      "✅ 后台服务已成功重启": "✅ Background service restarted",
+      "⚠️ 重启未成功: ": "⚠️ Restart failed: ",
+      "未知错误": "unknown error",
+      "❌ 请求重启失败": "❌ Restart request failed",
+      "确定要清空磁盘上的 atv-core.log 日志文件吗？此操作无法撤销。": "Empty the atv-core.log file on disk? This can't be undone.",
+      "🧹 日志文件已成功清空": "🧹 Log file emptied",
+      "清空失败": "Couldn't empty the file",
+      "● 后台引擎运行中 (PID ": "● Engine running (PID ",
+      "○ 后台引擎已停止": "○ Engine stopped",
+      "未运行": "Not running",
+      "📱 手机已连接 (": "📱 iPhone connected (",
+      "就绪": "ready",
+      "📱 等待手机连接": "📱 Waiting for iPhone",
+      "⏳ 加载中...": "⏳ Loading...",
+      "更新时间: ": "Updated: ",
+      "暂无符合条件的日志": "No matching log lines",
+      "日志文件当前为空。通过 Apple TV Remote 触发操作后将显示实时日志。": "The log file is empty. Use Apple TV Remote and its log will appear here.",
+      "未找到匹配当前筛选级别的日志内容。": "No log lines match the current level filter."
+    };
+    /** The English for a piece of the page's Chinese text, unless the browser prefers Chinese. */
+    const i18n = zh => (I18N_ZH ? zh : (I18N_EN[zh] ?? zh));
+    /** The Chinese or the English version of a text put together on the fly. */
+    const i18nPick = (zh, en) => (I18N_ZH ? zh : en);
+    // Translate the page's fixed text and tooltips.
+    (function translateFixedText() {
+      if (I18N_ZH) return;
+      document.documentElement.lang = 'en';
+      const walker = document.createTreeWalker(document.documentElement, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const key = node.nodeValue.trim();
+        if (key && I18N_EN[key] !== undefined) node.nodeValue = node.nodeValue.replace(key, () => I18N_EN[key]);
+      }
+      for (const el of document.querySelectorAll('[title], [placeholder], [aria-label]')) {
+        for (const attr of ['title', 'placeholder', 'aria-label']) {
+          const value = el.getAttribute(attr);
+          if (value && I18N_EN[value] !== undefined) el.setAttribute(attr, I18N_EN[value]);
+        }
+      }
+    })();
+
     function showToast(msg) {
       const t = $('toast');
       t.textContent = msg;
@@ -710,9 +801,9 @@ enum DebugWebPage {
     function copyText(text) {
       if (!text) return;
       navigator.clipboard.writeText(text).then(() => {
-        showToast('已复制: ' + text);
+        showToast(i18n('已复制: ') + text);
       }).catch(() => {
-        showToast('复制失败，请手动选择');
+        showToast(i18n('复制失败，请手动选择'));
       });
     }
 
@@ -743,10 +834,10 @@ enum DebugWebPage {
       const btn = $('autoRefreshBtn');
       btn.classList.toggle('active', state.autoRefresh);
       if (state.autoRefresh) {
-        btn.textContent = '⏱️ 自动刷新 (2s)';
+        btn.textContent = i18n('⏱️ 自动刷新 (2s)');
         startAutoRefresh();
       } else {
-        btn.textContent = '⏸️ 自动刷新 (已暂停)';
+        btn.textContent = i18n('⏸️ 自动刷新 (已暂停)');
         stopAutoRefresh();
       }
     }
@@ -773,43 +864,43 @@ enum DebugWebPage {
 
     function copyFilteredLogs() {
       if (state.filteredLines.length === 0) {
-        showToast('当前没有匹配的日志行');
+        showToast(i18n('当前没有匹配的日志行'));
         return;
       }
       const text = state.filteredLines.join('\\n');
       navigator.clipboard.writeText(text).then(() => {
-        showToast(`已成功复制 ${state.filteredLines.length} 行日志`);
+        showToast(i18nPick(`已成功复制 ${state.filteredLines.length} 行日志`, `Copied ${state.filteredLines.length} log lines`));
       });
     }
 
     async function restartCoreProcess() {
-      if (!confirm('确定要通过 Swift 宿主重启后台 atv-cli 核心引擎吗？')) return;
-      showToast('正在请求重启后台服务...');
+      if (!confirm(i18n('确定要通过 Swift 宿主重启后台 atv-cli 核心引擎吗？'))) return;
+      showToast(i18n('正在请求重启后台服务...'));
       try {
         const res = await fetch('/api/restart', { method: 'POST' });
         const data = await res.json();
         if (data.status === 'ok') {
-          showToast('✅ 后台服务已成功重启');
+          showToast(i18n('✅ 后台服务已成功重启'));
           setTimeout(() => { fetchStatus(); fetchLogs(true); }, 1000);
         } else {
-          showToast('⚠️ 重启未成功: ' + (data.message || '未知错误'));
+          showToast(i18n('⚠️ 重启未成功: ') + (data.message || i18n('未知错误')));
         }
       } catch (e) {
-        showToast('❌ 请求重启失败');
+        showToast(i18n('❌ 请求重启失败'));
       }
     }
 
     async function clearLogFile() {
-      if (!confirm('确定要清空磁盘上的 atv-core.log 日志文件吗？此操作无法撤销。')) return;
+      if (!confirm(i18n('确定要清空磁盘上的 atv-core.log 日志文件吗？此操作无法撤销。'))) return;
       try {
         const res = await fetch('/api/clear_log', { method: 'POST' });
         const data = await res.json();
         if (data.status === 'ok') {
-          showToast('🧹 日志文件已成功清空');
+          showToast(i18n('🧹 日志文件已成功清空'));
           fetchLogs(true);
         }
       } catch (e) {
-        showToast('清空失败');
+        showToast(i18n('清空失败'));
       }
     }
 
@@ -821,13 +912,13 @@ enum DebugWebPage {
         
         const sBadge = $('serverBadge');
         if (data.service_running) {
-          sBadge.textContent = '● 后台引擎运行中 (PID ' + (data.pid || '--') + ')';
+          sBadge.textContent = i18n('● 后台引擎运行中 (PID ') + (data.pid || '--') + ')';
           sBadge.className = 'badge online';
           $('procPidBadge').textContent = 'PID: ' + (data.pid || '--');
         } else {
-          sBadge.textContent = '○ 后台引擎已停止';
+          sBadge.textContent = i18n('○ 后台引擎已停止');
           sBadge.className = 'badge offline';
-          $('procPidBadge').textContent = '未运行';
+          $('procPidBadge').textContent = i18n('未运行');
         }
 
         // Also probe Rust core on 8765 if reachable
@@ -837,10 +928,10 @@ enum DebugWebPage {
             const coreData = await coreRes.json();
             const cBadge = $('clientBadge');
             if (coreData.client_connected) {
-              cBadge.textContent = '📱 手机已连接 (' + (coreData.client_peer || '就绪') + ')';
+              cBadge.textContent = i18n('📱 手机已连接 (') + (coreData.client_peer || i18n('就绪')) + ')';
               cBadge.className = 'badge connected';
             } else {
-              cBadge.textContent = '📱 等待手机连接';
+              cBadge.textContent = i18n('📱 等待手机连接');
               cBadge.className = 'badge';
             }
           }
@@ -852,7 +943,7 @@ enum DebugWebPage {
       if (state.isFetching) return;
       state.isFetching = true;
       if (manual) {
-        $('refreshBtn').textContent = '⏳ 加载中...';
+        $('refreshBtn').textContent = i18n('⏳ 加载中...');
       }
 
       try {
@@ -871,13 +962,13 @@ enum DebugWebPage {
         applyFilters();
 
         const now = new Date();
-        $('lastUpdated').textContent = '更新时间: ' + now.toTimeString().split(' ')[0];
+        $('lastUpdated').textContent = i18n('更新时间: ') + now.toTimeString().split(' ')[0];
       } catch (err) {
         console.error('Failed to fetch logs from Swift server:', err);
       } finally {
         state.isFetching = false;
         if (manual) {
-          $('refreshBtn').textContent = '🔄 刷新日志';
+          $('refreshBtn').textContent = i18n('🔄 刷新日志');
         }
       }
     }
@@ -1011,7 +1102,7 @@ enum DebugWebPage {
           const clean = stripAnsi(l).toLowerCase();
           return clean.includes(kw);
         });
-        $('matchCount').textContent = `(匹配 ${lines.length} / ${state.rawLines.length} 行)`;
+        $('matchCount').textContent = i18nPick(`(匹配 ${lines.length} / ${state.rawLines.length} 行)`, `(${lines.length} of ${state.rawLines.length} lines match)`);
       } else {
         $('matchCount').textContent = '';
       }
@@ -1033,13 +1124,13 @@ enum DebugWebPage {
       const container = $('terminalBody');
       const lines = state.filteredLines;
 
-      $('renderedCount').textContent = `显示 ${lines.length} 行 (总计 ${state.rawLines.length} 行)`;
+      $('renderedCount').textContent = i18nPick(`显示 ${lines.length} 行 (总计 ${state.rawLines.length} 行)`, `Showing ${lines.length} lines (${state.rawLines.length} in total)`);
 
       if (lines.length === 0) {
         container.innerHTML = `
           <div class="empty-state">
-            <h3>暂无符合条件的日志</h3>
-            <p>${state.rawLines.length === 0 ? '日志文件当前为空。通过 Apple TV Remote 触发操作后将显示实时日志。' : '未找到匹配当前筛选级别的日志内容。'}</p>
+            <h3>${i18n('暂无符合条件的日志')}</h3>
+            <p>${state.rawLines.length === 0 ? i18n('日志文件当前为空。通过 Apple TV Remote 触发操作后将显示实时日志。') : i18n('未找到匹配当前筛选级别的日志内容。')}</p>
           </div>
         `;
         return;

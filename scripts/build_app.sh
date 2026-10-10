@@ -100,6 +100,8 @@ chmod +x "$APP_BUNDLE/Contents/MacOS/atv-cli"
 cp "$ROOT_DIR/mac-app/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 echo "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 cp "$ROOT_DIR/mac-app/resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+# Translations of Info.plist strings (the Accessibility permission prompt)
+cp -R "$ROOT_DIR"/mac-app/resources/*.lproj "$APP_BUNDLE/Contents/Resources/"
 
 # Clean temporary standalone swift binary
 rm -f "$SWIFT_BIN"

@@ -1,0 +1,2 @@
+/* Shown when macOS asks for Accessibility permission. */
+"NSAccessibilityUsageDescription" = "Apple TV Remote needs Accessibility permission to move the mouse pointer and press keys.";

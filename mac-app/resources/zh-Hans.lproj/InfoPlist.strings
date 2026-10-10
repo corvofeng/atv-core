@@ -1,0 +1,2 @@
+/* Shown when macOS asks for Accessibility permission. */
+"NSAccessibilityUsageDescription" = "Apple TV Remote 需要辅助功能权限以模拟鼠标指针移动与按键操作。";

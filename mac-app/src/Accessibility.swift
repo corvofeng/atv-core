@@ -42,10 +42,10 @@ enum AccessibilityHelper {
         if isTrusted() {
             if userInitiated {
                 let alert = NSAlert()
-                alert.messageText = "✅ 辅助功能权限已启用"
-                alert.informativeText = "Apple TV Remote 已获得系统的辅助功能权限，鼠标光标滑动、点击与媒体按键均可正常工作。"
+                alert.messageText = L10n.t("✅ 辅助功能权限已启用", "✅ Accessibility permission is on")
+                alert.informativeText = L10n.t("Apple TV Remote 已获得系统的辅助功能权限，鼠标光标滑动、点击与媒体按键均可正常工作。", "Apple TV Remote has Accessibility permission, so moving the pointer, clicking and the media keys all work.")
                 alert.alertStyle = .informational
-                alert.addButton(withTitle: "确定")
+                alert.addButton(withTitle: L10n.t("确定", "OK"))
                 alert.runModal()
             }
             return
@@ -56,8 +56,8 @@ enum AccessibilityHelper {
 
         if userInitiated {
             let alert = NSAlert()
-            alert.messageText = "需要「辅助功能」权限"
-            alert.informativeText = """
+            alert.messageText = L10n.t("需要「辅助功能」权限", "Accessibility Permission Needed")
+            alert.informativeText = L10n.isChinese ? """
 Apple TV Remote 需要使用辅助功能模拟 Mac 鼠标指针滑动与键盘按键。
 
 【系统页面名称说明】
@@ -69,10 +69,22 @@ Apple TV Remote 需要使用辅助功能模拟 Mac 鼠标指针滑动与键盘�
 1. 点击下方「打开系统设置」按钮进入该页面；
 2. 找到列表中的「AppleTVRemote」，将右侧开关开启为蓝色；
 3. ⚠️ 重要提示：如果开关已经是开启状态但仍报未授权，是由于版本重编后系统底层签名缓存未同步，请将「AppleTVRemote」开关先关闭一次、再重新打开即可立即生效！
+""" : """
+Apple TV Remote uses Accessibility to move your Mac's pointer and press keys.
+
+[Where to find it]
+On macOS 15 (Sequoia) and later, the settings page for this permission may be named:
+👉 "Device Control and Data Access"
+That is the right page for this permission.
+
+[How to turn it on]
+1. Click "Open System Settings" below to go to that page.
+2. Find "AppleTVRemote" in the list and turn its switch on (blue).
+3. ⚠️ Important: if the switch is already on but the app still says it isn't allowed, macOS is holding on to the signature of an older build. Turn the "AppleTVRemote" switch off and on again, and it takes effect right away.
 """
             alert.alertStyle = .warning
-            alert.addButton(withTitle: "打开系统设置")
-            alert.addButton(withTitle: "稍后")
+            alert.addButton(withTitle: L10n.t("打开系统设置", "Open System Settings"))
+            alert.addButton(withTitle: L10n.t("稍后", "Later"))
 
             let response = alert.runModal()
             if response == .alertFirstButtonReturn {

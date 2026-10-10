@@ -802,6 +802,128 @@
 
   <script>
     const $ = id => document.getElementById(id);
+
+    // ===== Language: Chinese when the browser prefers it, English otherwise =====
+    const I18N_ZH = ((navigator.languages && navigator.languages[0]) || navigator.language || '').toLowerCase().startsWith('zh');
+    // English for the page's Chinese text, keyed by the Chinese.
+    const I18N_EN = {
+      "Apple TV Remote 实时状态监控 & 交互调试面板": "Apple TV Remote live status & debugging panel",
+      "等待连接": "Waiting for connection",
+      "📱 等待 iPhone 连接": "📱 Waiting for iPhone",
+      "从服务端同步最新真实状态，确保前后端数据一致": "Fetch the latest state from the server so this page matches it",
+      "刷新状态": "Refresh",
+      "打开 Swift 托管的系统运行日志与诊断面板 (8766)": "Open the log and diagnostics page hosted by the Swift app (8766)",
+      "系统日志 (Swift Web)": "System Log (Swift Web)",
+      "触摸板独立设置 (Touchpad Settings)": "Touch Area Settings",
+      "控制运行模式、光标灵敏度、动力学曲线与事件日志级别": "Mode, pointer speed, acceleration and event log level",
+      "🖱️ 鼠标光标": "🖱️ Mouse pointer",
+      "0.50x 慢速": "0.50x slow",
+      "🔇 事件日志: 静默 (Debug)": "🔇 Event log: quiet (Debug)",
+      "运行模式 (单选):": "Mode:",
+      "触控板运行模式单选": "Touch area mode",
+      "方向键模式：滑动模拟上下左右按键，轻点模拟回车确认": "Arrow keys: swipes press the arrow keys, a tap presses Return",
+      "◀▲▼▶ 方向键": "◀▲▼▶ Arrow keys",
+      "鼠标光标模式：触控滑动平滑移动 macOS 鼠标光标，轻点模拟鼠标左键点击": "Mouse pointer: swipes move the Mac's pointer smoothly, a tap clicks",
+      "空置模式：仅在右侧画布实时预览触控轨迹，不触发任何按键或鼠标移动操作": "Idle: only shows your touches on the canvas, without pressing keys or moving the pointer",
+      "👁️ 触控板空置 (仅轨迹预览)": "👁️ Idle (preview only)",
+      "在三个单选模式间顺序循环切换": "Cycle through the three modes",
+      "🔄 轮换": "🔄 Cycle",
+      "动力学算法:": "Acceleration:",
+      "⚡ 动态加速度: 开启": "⚡ Dynamic acceleration: on",
+      "🐢 慢速精细 (0.2x)": "🐢 Slow and fine (0.2x)",
+      "🚀 极速大屏 (3.0x)": "🚀 Fastest (3.0x)",
+      "快速预设:": "Presets:",
+      "🐢 0.5x 慢速精准 (默认)": "🐢 0.5x Slow and precise (default)",
+      "🎯 1.0x 标准舒适": "🎯 1.0x Standard",
+      "⚡ 1.5x 快速顺畅": "⚡ 1.5x Fast and smooth",
+      "🚀 2.2x 极速大屏": "🚀 2.2x Fastest, for large screens",
+      "📋 触摸板实时配置与运行状态记录 (Configuration Record)": "📋 Current touch area settings and status",
+      "● 服务端已同步": "● In sync with server",
+      "等待初始化...": "Starting...",
+      "立即拉取服务端内核真实状态重新校验": "Fetch the engine's actual state now and check it again",
+      "🔄 校验同步": "🔄 Check Sync",
+      "当前运行模式": "Mode",
+      "🖱️ 鼠标光标模式 (Mouse)": "🖱️ Mouse pointer",
+      "指针灵敏度 (速度)": "Pointer speed",
+      "0.50x (慢速精准)": "0.50x (slow and precise)",
+      "动力学加速度": "Acceleration",
+      "动态人体工学曲线 (开启)": "Dynamic ergonomic curve (on)",
+      "SELECT 按键动作": "SELECT button action",
+      "模拟鼠标左键单击 (Left Click)": "Left click",
+      "适配屏幕物理范围": "Screen area",
+      "自动检测中...": "Detecting...",
+      "终端事件日志级别": "Terminal event log level",
+      "静音 (Debug 日志，不刷屏)": "Quiet (Debug level, no flood)",
+      "iPhone 遥控器连接状态": "iPhone remote",
+      "📱 等待连接": "📱 Waiting for connection",
+      "服务端内核一致性状态": "Engine consistency",
+      "🟢 状态完全一致 (内核已校验)": "🟢 Fully in sync (checked with the engine)",
+      "最近按键操作": "Last Button",
+      "等待遥控器输入": "Waiting for remote input",
+      "模拟控制 (Web Debug Trigger)": "Simulated Controls (Web Debug Trigger)",
+      "点击直接控制系统": "Clicks control the Mac directly",
+      "音频音量": "Volume",
+      "当前音量 50%": "Volume 50%",
+      "按键历史": "Button History",
+      "最新在上": "Newest first",
+      "触控轨迹实时预览": "Live Touch Preview",
+      "👁️ 空置预览中": "👁️ Idle preview",
+      "0 点": "0 points",
+      "清空画布上保留的触控轨迹": "Clear the touch trails from the canvas",
+      "🗑️ 清空轨迹": "🗑️ Clear",
+      "协议日志流": "Protocol Log",
+      "实时输出": "Live",
+      "慢速精准微调": "Slow and precise",
+      "标准舒适手感": "Standard",
+      "快速顺畅移动": "Fast and smooth",
+      "极速跨屏大屏": "Fastest, for large screens",
+      "👁️ 触控板空置模式 (仅看轨迹)": "👁️ Idle (preview only)",
+      "🖱️ 鼠标光标模式": "🖱️ Mouse pointer",
+      "◀▲▼▶ 方向键模式": "◀▲▼▶ Arrow keys",
+      "📏 线性匀速: 1:1无加速": "📏 Linear: 1:1, no acceleration",
+      "📢 事件日志: 开启 (Info)": "📢 Event log: on (Info)",
+      "👁️ 触控板空置模式 (仅看轨迹实时预览，不控制系统)": "👁️ Idle (live preview only, doesn't control the Mac)",
+      "🖱️ 鼠标光标模式 (Mouse Pointer)": "🖱️ Mouse pointer",
+      "◀▲▼▶ 方向键模式 (D-pad Arrows)": "◀▲▼▶ Arrow keys (D-pad)",
+      "动态人体工学曲线 (开启: 慢稳快甩)": "Dynamic ergonomic curve (on: steady when slow, far when fast)",
+      "纯线性匀速 1:1 (关闭)": "Linear 1:1 (off)",
+      "空置拦截 (不触发点击或按键)": "Ignored (no clicks or key presses)",
+      "回车确认 (Return / Enter)": "Return / Enter",
+      "详细输出 (Info 级别，输出按键到终端)": "Detailed (Info level, prints buttons to the terminal)",
+      "静音模式 (Debug 级别，避免终端刷屏)": "Quiet (Debug level, keeps the terminal readable)",
+      "遥控会话已就绪": "Remote session ready",
+      "服务端运行中 (等待 iPhone)": "Server running (waiting for iPhone)",
+      "等待连接服务端": "Connecting to the server",
+      "📱 未连接 (打开控制中心连接)": "📱 Not connected (open Control Center to connect)",
+      "同步中...": "Syncing...",
+      "⏳ 与服务端校验中...": "⏳ Checking with the server...",
+      "✅ 已同步": "✅ Synced",
+      "❌ 同步失败": "❌ Sync failed",
+      "⚠️ 同步异常 (检查服务是否运行)": "⚠️ Out of sync (check that the service is running)",
+      "⚠️ 同步失败": "⚠️ Sync failed",
+      "服务连接中断，重连中...": "Connection lost, reconnecting...",
+      "已通过加密认证": "Encrypted and authenticated"
+    };
+    /** The English for a piece of the page's Chinese text, unless the browser prefers Chinese. */
+    const i18n = zh => (I18N_ZH ? zh : (I18N_EN[zh] ?? zh));
+    /** The Chinese or the English version of a text put together on the fly. */
+    const i18nPick = (zh, en) => (I18N_ZH ? zh : en);
+    // Translate the page's fixed text and tooltips.
+    (function translateFixedText() {
+      if (I18N_ZH) return;
+      document.documentElement.lang = 'en';
+      const walker = document.createTreeWalker(document.documentElement, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const key = node.nodeValue.trim();
+        if (key && I18N_EN[key] !== undefined) node.nodeValue = node.nodeValue.replace(key, () => I18N_EN[key]);
+      }
+      for (const el of document.querySelectorAll('[title], [placeholder], [aria-label]')) {
+        for (const attr of ['title', 'placeholder', 'aria-label']) {
+          const value = el.getAttribute(attr);
+          if (value && I18N_EN[value] !== undefined) el.setAttribute(attr, I18N_EN[value]);
+        }
+      }
+    })();
     const canvas = $('touch');
     const ctx = canvas.getContext('2d');
     const rawLines = [];
@@ -845,7 +967,7 @@
       $('coords').innerHTML = 'dx —&nbsp;&nbsp;dy —';
       $('phase').textContent = 'idle';
       const sc = $('strokeCount');
-      if (sc) sc.textContent = '0 点';
+      if (sc) sc.textContent = i18n('0 点');
     }
 
     function drawTouch(data) {
@@ -869,7 +991,7 @@
         drawing = true;
         pointCount++;
         const sc = $('strokeCount');
-        if (sc) sc.textContent = `${pointCount} 点`;
+        if (sc) sc.textContent = i18nPick(`${pointCount} 点`, `${pointCount} points`);
 
         // 绘制落指锚点 (青色微光圆点)
         ctx.beginPath();
@@ -879,7 +1001,7 @@
       } else if (phase === 2 && drawing) { // Moved: 持续平滑连线
         pointCount++;
         const sc = $('strokeCount');
-        if (sc) sc.textContent = `${pointCount} 点`;
+        if (sc) sc.textContent = i18nPick(`${pointCount} 点`, `${pointCount} points`);
 
         ctx.beginPath();
         ctx.moveTo(curX, curY);
@@ -890,7 +1012,7 @@
       } else if (phase === 4) { // Ended: 手指抬起，画结束标记，不清空画布！
         pointCount++;
         const sc = $('strokeCount');
-        if (sc) sc.textContent = `${pointCount} 点`;
+        if (sc) sc.textContent = i18nPick(`${pointCount} 点`, `${pointCount} points`);
 
         ctx.beginPath();
         ctx.fillStyle = 'rgba(93, 169, 255, 0.85)';
@@ -919,8 +1041,8 @@
       const pct = Math.round(vol * 100);
       $('volFill').style.width = `${pct}%`;
       $('volFill').classList.toggle('muted', muted);
-      $('volPct').textContent = muted ? `已静音 (${pct}%)` : `${pct}%`;
-      $('volState').textContent = muted ? `静音中 — 实际音量 ${pct}%` : `音量 ${pct}% (${Math.round(vol * 16)}/16)`;
+      $('volPct').textContent = muted ? i18nPick(`已静音 (${pct}%)`, `Muted (${pct}%)`) : `${pct}%`;
+      $('volState').textContent = muted ? i18nPick(`静音中 — 实际音量 ${pct}%`, `Muted — volume ${pct}%`) : i18nPick(`音量 ${pct}% (${Math.round(vol * 16)}/16)`, `Volume ${pct}% (${Math.round(vol * 16)}/16)`);
     }
 
     function appendRaw(packet) {
@@ -951,17 +1073,17 @@
     let sseSource = null;
 
     function formatSpeedDesc(speed) {
-      if (speed <= 0.6) return `${speed.toFixed(2)}x 慢速`;
-      if (speed <= 1.15) return `${speed.toFixed(2)}x 标准`;
-      if (speed <= 1.8) return `${speed.toFixed(2)}x 快速`;
-      return `${speed.toFixed(2)}x 极速`;
+      if (speed <= 0.6) return i18nPick(`${speed.toFixed(2)}x 慢速`, `${speed.toFixed(2)}x slow`);
+      if (speed <= 1.15) return i18nPick(`${speed.toFixed(2)}x 标准`, `${speed.toFixed(2)}x standard`);
+      if (speed <= 1.8) return i18nPick(`${speed.toFixed(2)}x 快速`, `${speed.toFixed(2)}x fast`);
+      return i18nPick(`${speed.toFixed(2)}x 极速`, `${speed.toFixed(2)}x fastest`);
     }
 
     function formatSpeedDetail(speed) {
-      if (speed <= 0.6) return "慢速精准微调";
-      if (speed <= 1.15) return "标准舒适手感";
-      if (speed <= 1.8) return "快速顺畅移动";
-      return "极速跨屏大屏";
+      if (speed <= 0.6) return i18n("慢速精准微调");
+      if (speed <= 1.15) return i18n("标准舒适手感");
+      if (speed <= 1.8) return i18n("快速顺畅移动");
+      return i18n("极速跨屏大屏");
     }
 
     function normalizeMode(m) {
@@ -986,13 +1108,13 @@
       const cardBadge = $('cardModeBadge');
       if (cardBadge) {
         if (curMode === 'idle') {
-          cardBadge.textContent = '👁️ 触控板空置模式 (仅看轨迹)';
+          cardBadge.textContent = i18n('👁️ 触控板空置模式 (仅看轨迹)');
           cardBadge.className = 'mode-badge idle';
         } else if (curMode === 'mouse') {
-          cardBadge.textContent = '🖱️ 鼠标光标模式';
+          cardBadge.textContent = i18n('🖱️ 鼠标光标模式');
           cardBadge.className = 'mode-badge mouse';
         } else {
-          cardBadge.textContent = '◀▲▼▶ 方向键模式';
+          cardBadge.textContent = i18n('◀▲▼▶ 方向键模式');
           cardBadge.className = 'mode-badge direction';
         }
       }
@@ -1027,7 +1149,7 @@
       const accelText = $('accelText');
       if (accelBtn && accelText) {
         accelBtn.classList.toggle('active', curAccel);
-        accelText.textContent = curAccel ? '⚡ 动态加速度: 开启' : '📏 线性匀速: 1:1无加速';
+        accelText.textContent = curAccel ? i18n('⚡ 动态加速度: 开启') : i18n('📏 线性匀速: 1:1无加速');
       }
 
       // 终端详细事件日志开关
@@ -1040,7 +1162,7 @@
           verbDot.style.background = curVerbose ? 'var(--cyan)' : 'var(--muted)';
           verbDot.style.boxShadow = curVerbose ? '0 0 8px var(--cyan)' : 'none';
         }
-        verbText.textContent = curVerbose ? '📢 事件日志: 开启 (Info)' : '🔇 事件日志: 静默 (Debug)';
+        verbText.textContent = curVerbose ? i18n('📢 事件日志: 开启 (Info)') : i18n('🔇 事件日志: 静默 (Debug)');
       }
 
       // 滑块刻度同步
@@ -1057,13 +1179,13 @@
       const recMode = $('recMode');
       if (recMode) {
         if (curMode === 'idle') {
-          recMode.textContent = '👁️ 触控板空置模式 (仅看轨迹实时预览，不控制系统)';
+          recMode.textContent = i18n('👁️ 触控板空置模式 (仅看轨迹实时预览，不控制系统)');
           recMode.className = 'tp-value highlight-idle';
         } else if (curMode === 'mouse') {
-          recMode.textContent = '🖱️ 鼠标光标模式 (Mouse Pointer)';
+          recMode.textContent = i18n('🖱️ 鼠标光标模式 (Mouse Pointer)');
           recMode.className = 'tp-value highlight';
         } else {
-          recMode.textContent = '◀▲▼▶ 方向键模式 (D-pad Arrows)';
+          recMode.textContent = i18n('◀▲▼▶ 方向键模式 (D-pad Arrows)');
           recMode.className = 'tp-value';
         }
       }
@@ -1075,35 +1197,35 @@
 
       const recAccel = $('recAccel');
       if (recAccel) {
-        recAccel.textContent = curAccel ? '动态人体工学曲线 (开启: 慢稳快甩)' : '纯线性匀速 1:1 (关闭)';
+        recAccel.textContent = curAccel ? i18n('动态人体工学曲线 (开启: 慢稳快甩)') : i18n('纯线性匀速 1:1 (关闭)');
       }
 
       const recSelect = $('recSelect');
       if (recSelect) {
         if (curMode === 'idle') {
-          recSelect.textContent = '空置拦截 (不触发点击或按键)';
+          recSelect.textContent = i18n('空置拦截 (不触发点击或按键)');
         } else if (curMode === 'mouse') {
-          recSelect.textContent = '模拟鼠标左键单击 (Left Click)';
+          recSelect.textContent = i18n('模拟鼠标左键单击 (Left Click)');
         } else {
-          recSelect.textContent = '回车确认 (Return / Enter)';
+          recSelect.textContent = i18n('回车确认 (Return / Enter)');
         }
       }
 
       const recVerbose = $('recVerbose');
       if (recVerbose) {
-        recVerbose.textContent = curVerbose ? '详细输出 (Info 级别，输出按键到终端)' : '静音模式 (Debug 级别，避免终端刷屏)';
+        recVerbose.textContent = curVerbose ? i18n('详细输出 (Info 级别，输出按键到终端)') : i18n('静音模式 (Debug 级别，避免终端刷屏)');
       }
 
       const recScreen = $('recScreen');
       if (recScreen && screenBounds) {
-        recScreen.textContent = `${screenBounds[0]} × ${screenBounds[1]} (macOS 主屏幕物理分辨率)`;
+        recScreen.textContent = i18nPick(`${screenBounds[0]} × ${screenBounds[1]} (macOS 主屏幕物理分辨率)`, `${screenBounds[0]} × ${screenBounds[1]} (main display resolution)`);
       }
 
       const tpUpdate = $('tpLastUpdate');
       if (tpUpdate) {
         const now = new Date();
         const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-        tpUpdate.textContent = `${timeStr} 实时同步完成`;
+        tpUpdate.textContent = i18nPick(`${timeStr} 实时同步完成`, `Synced at ${timeStr}`);
       }
     }
 
@@ -1180,27 +1302,27 @@
       if (clientConnected) {
         if (badge) {
           badge.className = 'client-badge connected';
-          badge.textContent = `📱 iPhone 已连接${clientPeer ? ' (' + clientPeer + ')' : ''}`;
+          badge.textContent = i18nPick(`📱 iPhone 已连接${clientPeer ? ' (' + clientPeer + ')' : ''}`, `📱 iPhone connected${clientPeer ? ' (' + clientPeer + ')' : ''}`);
         }
         if (conn) {
-          conn.textContent = sessionReady ? '遥控会话已就绪' : `客户端已连接 (${clientPeer || ''})`;
+          conn.textContent = sessionReady ? i18n('遥控会话已就绪') : i18nPick(`客户端已连接 (${clientPeer || ''})`, `Client connected (${clientPeer || ''})`);
         }
         if (dot) dot.classList.add('online');
         if (recClient) {
-          recClient.textContent = `🟢 已连接 (${clientPeer || '会话中'})`;
+          recClient.textContent = i18nPick(`🟢 已连接 (${clientPeer || '会话中'})`, `🟢 Connected (${clientPeer || 'in session'})`);
           recClient.className = 'tp-value highlight';
         }
       } else {
         if (badge) {
           badge.className = 'client-badge waiting';
-          badge.textContent = '📱 等待 iPhone 连接';
+          badge.textContent = i18n('📱 等待 iPhone 连接');
         }
         if (conn) {
           const sseOk = sseSource && sseSource.readyState === EventSource.OPEN;
-          conn.textContent = sseOk ? '服务端运行中 (等待 iPhone)' : '等待连接服务端';
+          conn.textContent = sseOk ? i18n('服务端运行中 (等待 iPhone)') : i18n('等待连接服务端');
         }
         if (recClient) {
-          recClient.textContent = '📱 未连接 (打开控制中心连接)';
+          recClient.textContent = i18n('📱 未连接 (打开控制中心连接)');
           recClient.className = 'tp-value';
         }
       }
@@ -1214,10 +1336,10 @@
 
       if (isManual) {
         if (btn) btn.classList.add('loading');
-        if (btnText) btnText.textContent = '同步中...';
+        if (btnText) btnText.textContent = i18n('同步中...');
         if (syncBadge) {
           syncBadge.className = 'sync-tag syncing';
-          syncBadge.textContent = '⏳ 与服务端校验中...';
+          syncBadge.textContent = i18n('⏳ 与服务端校验中...');
         }
       }
 
@@ -1227,7 +1349,7 @@
         const d = await res.json();
 
         if (d.device_name) {
-          $('subTitle').textContent = `当前设备: ${d.device_name} · 实时状态监控 & 交互调试`;
+          $('subTitle').textContent = i18nPick(`当前设备: ${d.device_name} · 实时状态监控 & 交互调试`, `Device: ${d.device_name} · live status & debugging`);
         }
         if (Array.isArray(d.screen_size)) {
           screenBounds = d.screen_size;
@@ -1251,21 +1373,21 @@
         }
 
         if (recSync) {
-          recSync.textContent = '🟢 状态完全一致 (内核已校验)';
+          recSync.textContent = i18n('🟢 状态完全一致 (内核已校验)');
           recSync.classList.add('pulse-update');
           setTimeout(() => recSync.classList.remove('pulse-update'), 1200);
         }
 
         if (syncBadge) {
           syncBadge.className = 'sync-tag ok';
-          syncBadge.textContent = '● 服务端已同步';
+          syncBadge.textContent = i18n('● 服务端已同步');
         }
 
         if (isManual) {
           if (btn) btn.classList.remove('loading');
-          if (btnText) btnText.textContent = '✅ 已同步';
+          if (btnText) btnText.textContent = i18n('✅ 已同步');
           setTimeout(() => {
-            if (btnText) btnText.textContent = '刷新状态';
+            if (btnText) btnText.textContent = i18n('刷新状态');
           }, 1500);
         }
 
@@ -1278,17 +1400,17 @@
         if (syncBadge) {
           syncBadge.className = 'sync-tag';
           syncBadge.style.color = 'var(--red)';
-          syncBadge.textContent = '❌ 同步失败';
+          syncBadge.textContent = i18n('❌ 同步失败');
         }
         if (recSync) {
-          recSync.textContent = '⚠️ 同步异常 (检查服务是否运行)';
+          recSync.textContent = i18n('⚠️ 同步异常 (检查服务是否运行)');
           recSync.className = 'tp-value';
         }
         if (isManual) {
           if (btn) btn.classList.remove('loading');
-          if (btnText) btnText.textContent = '⚠️ 同步失败';
+          if (btnText) btnText.textContent = i18n('⚠️ 同步失败');
           setTimeout(() => {
-            if (btnText) btnText.textContent = '刷新状态';
+            if (btnText) btnText.textContent = i18n('刷新状态');
           }, 2000);
         }
       }
@@ -1305,7 +1427,7 @@
       };
       sseSource.onerror = () => {
         $('dot').classList.remove('online');
-        $('connection').textContent = '服务连接中断，重连中...';
+        $('connection').textContent = i18n('服务连接中断，重连中...');
       };
       sseSource.onmessage = message => {
         try {
@@ -1327,7 +1449,7 @@
             updateClientStatusBadge();
           }
           if (packet.event === 'verified') {
-            $('connection').textContent = '已通过加密认证';
+            $('connection').textContent = i18n('已通过加密认证');
           }
           if (packet.event === 'session_started' || packet.event === 'remote_ready') {
             sessionReady = true;

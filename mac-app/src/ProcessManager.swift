@@ -86,6 +86,8 @@ final class ProcessManager {
         let p = Process()
         p.executableURL = binaryUrl
         p.arguments = ["--target", "mac", "--pin", "1111", "--no-prompt"]
+        // The engine's own notifications follow the app's language.
+        p.environment = ProcessInfo.processInfo.environment.merging(["ATV_LANG": L10n.isChinese ? "zh" : "en"]) { $1 }
 
         // Create log file handle
         let fm = FileManager.default

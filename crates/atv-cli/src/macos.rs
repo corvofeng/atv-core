@@ -10,6 +10,24 @@ use std::time::{Duration, Instant};
 use atv_core::{AtvDelegate, EventKind, TouchPhase, TrackpadMode};
 use tracing::{debug, info, warn};
 
+/// Whether notifications are in Chinese. The macOS app passes its language in `ATV_LANG`; run
+/// from a terminal, the usual locale variables decide. Without either, the text stays Chinese.
+fn is_chinese() -> bool {
+    static CHINESE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *CHINESE.get_or_init(|| {
+        ["ATV_LANG", "LC_ALL", "LC_MESSAGES", "LANG"]
+            .iter()
+            .filter_map(|key| std::env::var(key).ok())
+            .find(|value| !value.is_empty())
+            .map_or(true, |value| value.to_lowercase().starts_with("zh"))
+    })
+}
+
+/// The Chinese or the English version of a notification.
+fn tr(zh: &'static str, en: &'static str) -> &'static str {
+    if is_chinese() { zh } else { en }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct CGPoint {
@@ -336,9 +354,9 @@ impl MacDelegate {
     pub fn notify_trackpad_mode_changed(&self, mode: TrackpadMode) {
         let title = "Apple TV Remote";
         let message = match mode {
-            TrackpadMode::Mouse => "已切换为: 🖱️ 鼠标光标模式 (Mouse Mode)",
-            TrackpadMode::Direction => "已切换为: ◀▲▼▶ 方向键模式 (Arrow Keys 上下左右)",
-            TrackpadMode::Idle => "已切换为: 👁️ 触控板空置模式 (仅看轨迹实时预览)",
+            TrackpadMode::Mouse => tr("已切换为: 🖱️ 鼠标光标模式 (Mouse Mode)", "Switched to: 🖱️ Mouse Pointer"),
+            TrackpadMode::Direction => tr("已切换为: ◀▲▼▶ 方向键模式 (Arrow Keys 上下左右)", "Switched to: ◀▲▼▶ Arrow Keys"),
+            TrackpadMode::Idle => tr("已切换为: 👁️ 触控板空置模式 (仅看轨迹实时预览)", "Switched to: 👁️ Idle (live preview only)"),
         };
         info!("[macOS] {message}");
         let script = format!("display notification \"{message}\" with title \"{title}\"");
@@ -526,7 +544,7 @@ impl MacDelegate {
         if count >= 3 {
             info!("[macOS] media previous track (triple-click)");
             send_system_media_key(NX_KEYTYPE_PREVIOUS);
-            self.notify_media_action("⏮ 上一曲 (Previous Track)");
+            self.notify_media_action(tr("⏮ 上一曲 (Previous Track)", "⏮ Previous Track"));
             if let Ok(mut s) = self.play_pause_state.lock() {
                 s.click_count = 0;
             }
@@ -551,7 +569,7 @@ impl MacDelegate {
                         info!("[macOS] media next track (double-click)");
                         send_system_media_key(NX_KEYTYPE_NEXT);
                         let title = "Apple TV Remote";
-                        let message = "⏭ 下一曲 (Next Track)";
+                        let message = tr("⏭ 下一曲 (Next Track)", "⏭ Next Track");
                         info!("[macOS] {message}");
                         let script = format!("display notification \"{message}\" with title \"{title}\"");
                         let _ = Command::new("/usr/bin/osascript").args(["-e", &script]).spawn();

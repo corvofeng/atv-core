@@ -121,13 +121,13 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
         if showStatusTextInBar {
             statusItem.button?.imagePosition = .imageLeading
             if busy {
-                statusItem.button?.title = " ⏳处理中..."
+                statusItem.button?.title = L10n.t(" ⏳处理中...", " ⏳Working...")
             } else if !running {
-                statusItem.button?.title = " 已停止"
+                statusItem.button?.title = L10n.t(" 已停止", " Stopped")
             } else if connected {
-                statusItem.button?.title = " 已连接"
+                statusItem.button?.title = L10n.t(" 已连接", " Connected")
             } else {
-                statusItem.button?.title = " 运行中"
+                statusItem.button?.title = L10n.t(" 运行中", " Running")
             }
         } else {
             statusItem.button?.title = ""
@@ -161,12 +161,12 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
     private func postConnectionNotification(connected: Bool, peer: String?) {
         let content = UNMutableNotificationContent()
         if connected {
-            content.title = "📱 iPhone 已连接"
-            content.body = "已成功接入 Apple TV Remote，可通过控制中心触控板操控 Mac。"
-            if let p = peer { content.subtitle = "设备来自: \(p)" }
+            content.title = L10n.t("📱 iPhone 已连接", "📱 iPhone connected")
+            content.body = L10n.t("已成功接入 Apple TV Remote，可通过控制中心触控板操控 Mac。", "Apple TV Remote is connected. Use the touch area in Control Center to control your Mac.")
+            if let p = peer { content.subtitle = L10n.t("设备来自: \(p)", "From: \(p)") }
         } else {
-            content.title = "📱 iPhone 已断开连接"
-            content.body = "Apple TV Remote 控制会话已结束。"
+            content.title = L10n.t("📱 iPhone 已断开连接", "📱 iPhone disconnected")
+            content.body = L10n.t("Apple TV Remote 控制会话已结束。", "The Apple TV Remote session has ended.")
         }
 
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
@@ -198,22 +198,22 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
 
         // 2. Status Information
         if isOnline {
-            let serverItem = NSMenuItem(title: "● 服务状态: 🟢 运行中 (\(deviceName))", action: nil, keyEquivalent: "")
+            let serverItem = NSMenuItem(title: L10n.t("● 服务状态: 🟢 运行中 (\(deviceName))", "● Service: 🟢 Running (\(deviceName))"), action: nil, keyEquivalent: "")
             serverItem.isEnabled = false
             menu.addItem(serverItem)
 
             let clientText = isConnected
-                ? "📱 手机连接: 🟢 已连接 (\(currentStatus?.client_peer ?? "就绪"))"
-                : "📱 手机连接: 🟡 等待连接 (PIN: 1111)"
+                ? L10n.t("📱 手机连接: 🟢 已连接 (\(currentStatus?.client_peer ?? "就绪"))", "📱 iPhone: 🟢 Connected (\(currentStatus?.client_peer ?? "ready"))")
+                : L10n.t("📱 手机连接: 🟡 等待连接 (PIN: 1111)", "📱 iPhone: 🟡 Waiting to connect (PIN: 1111)")
             let clientItem = NSMenuItem(title: clientText, action: nil, keyEquivalent: "")
             clientItem.isEnabled = false
             menu.addItem(clientItem)
         } else {
-            let serverItem = NSMenuItem(title: "○ 服务状态: 🔴 已停止", action: nil, keyEquivalent: "")
+            let serverItem = NSMenuItem(title: L10n.t("○ 服务状态: 🔴 已停止", "○ Service: 🔴 Stopped"), action: nil, keyEquivalent: "")
             serverItem.isEnabled = false
             menu.addItem(serverItem)
 
-            let clientItem = NSMenuItem(title: "📱 手机连接: 服务未启动", action: nil, keyEquivalent: "")
+            let clientItem = NSMenuItem(title: L10n.t("📱 手机连接: 服务未启动", "📱 iPhone: service not running"), action: nil, keyEquivalent: "")
             clientItem.isEnabled = false
             menu.addItem(clientItem)
         }
@@ -222,15 +222,15 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
 
         // 3. Service Control Actions (Start / Stop / Restart)
         if isOnline {
-            let stopItem = NSMenuItem(title: "⏸ 停止服务 (Stop)", action: #selector(onStopService), keyEquivalent: "s")
+            let stopItem = NSMenuItem(title: L10n.t("⏸ 停止服务 (Stop)", "⏸ Stop Service"), action: #selector(onStopService), keyEquivalent: "s")
             stopItem.target = self
             menu.addItem(stopItem)
 
-            let restartItem = NSMenuItem(title: "🔄 重启服务 (Restart)", action: #selector(onRestartService), keyEquivalent: "")
+            let restartItem = NSMenuItem(title: L10n.t("🔄 重启服务 (Restart)", "🔄 Restart Service"), action: #selector(onRestartService), keyEquivalent: "")
             restartItem.target = self
             menu.addItem(restartItem)
         } else {
-            let startItem = NSMenuItem(title: "▶ 启动服务 (Start)", action: #selector(onStartService), keyEquivalent: "s")
+            let startItem = NSMenuItem(title: L10n.t("▶ 启动服务 (Start)", "▶ Start Service"), action: #selector(onStartService), keyEquivalent: "s")
             startItem.target = self
             menu.addItem(startItem)
         }
@@ -238,25 +238,25 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
         menu.addItem(NSMenuItem.separator())
 
         // 4. Touchpad Controls (Active only when service is running - 3-way single choice radio)
-        let modeHeader = NSMenuItem(title: "触控板运行模式 (单选)", action: nil, keyEquivalent: "")
+        let modeHeader = NSMenuItem(title: L10n.t("触控板运行模式 (单选)", "Touch Area Mode"), action: nil, keyEquivalent: "")
         modeHeader.isEnabled = false
         menu.addItem(modeHeader)
 
         let curMode = currentStatus?.currentTrackpadMode ?? (isMouse ? "mouse" : "direction")
 
-        let mouseItem = NSMenuItem(title: "  🖱️ 鼠标光标模式 (Mouse)", action: #selector(onSelectMouseMode), keyEquivalent: "")
+        let mouseItem = NSMenuItem(title: L10n.t("  🖱️ 鼠标光标模式 (Mouse)", "  🖱️ Mouse Pointer"), action: #selector(onSelectMouseMode), keyEquivalent: "")
         mouseItem.target = self
         mouseItem.state = (isOnline && curMode == "mouse") ? .on : .off
         mouseItem.isEnabled = isOnline
         menu.addItem(mouseItem)
 
-        let dirItem = NSMenuItem(title: "  ◀▲▼▶ 方向键模式 (D-pad)", action: #selector(onSelectDirectionMode), keyEquivalent: "")
+        let dirItem = NSMenuItem(title: L10n.t("  ◀▲▼▶ 方向键模式 (D-pad)", "  ◀▲▼▶ Arrow Keys (D-pad)"), action: #selector(onSelectDirectionMode), keyEquivalent: "")
         dirItem.target = self
         dirItem.state = (isOnline && curMode == "direction") ? .on : .off
         dirItem.isEnabled = isOnline
         menu.addItem(dirItem)
 
-        let idleItem = NSMenuItem(title: "  👁️ 触控板空置模式 (仅看轨迹实时预览)", action: #selector(onSelectIdleMode), keyEquivalent: "")
+        let idleItem = NSMenuItem(title: L10n.t("  👁️ 触控板空置模式 (仅看轨迹实时预览)", "  👁️ Idle (live preview only)"), action: #selector(onSelectIdleMode), keyEquivalent: "")
         idleItem.target = self
         idleItem.state = (isOnline && curMode == "idle") ? .on : .off
         idleItem.isEnabled = isOnline
@@ -267,10 +267,10 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
         // 5. Sensitivity Speed Submenu
         let speedMenu = NSMenu()
         let presets: [(String, Double)] = [
-            ("🐢 0.5x 慢速精准 (默认)", 0.5),
-            ("🎯 1.0x 标准手感", 1.0),
-            ("⚡ 1.5x 快速顺畅", 1.5),
-            ("🚀 2.0x 极速大屏", 2.0)
+            (L10n.t("🐢 0.5x 慢速精准 (默认)", "🐢 0.5x Slow and precise (default)"), 0.5),
+            (L10n.t("🎯 1.0x 标准手感", "🎯 1.0x Standard"), 1.0),
+            (L10n.t("⚡ 1.5x 快速顺畅", "⚡ 1.5x Fast and smooth"), 1.5),
+            (L10n.t("🚀 2.0x 极速大屏", "🚀 2.0x Fastest, for large screens"), 2.0)
         ]
         for (label, val) in presets {
             let item = NSMenuItem(title: label, action: #selector(onSelectSpeedPreset(_:)), keyEquivalent: "")
@@ -280,7 +280,7 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
             speedMenu.addItem(item)
         }
 
-        let speedTitle = String(format: "指针灵敏度 (当前 %.2fx)", speed)
+        let speedTitle = String(format: L10n.t("指针灵敏度 (当前 %.2fx)", "Pointer Speed (now %.2fx)"), speed)
         let speedSubItem = NSMenuItem(title: speedTitle, action: nil, keyEquivalent: "")
         speedSubItem.submenu = speedMenu
         speedSubItem.isEnabled = isOnline
@@ -288,7 +288,7 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
 
         // 6. Dynamic Acceleration & Verbose Logs
         let accelItem = NSMenuItem(
-            title: "⚡ 动态人体工学加速度",
+            title: L10n.t("⚡ 动态人体工学加速度", "⚡ Dynamic Acceleration"),
             action: #selector(onToggleAccel),
             keyEquivalent: ""
         )
@@ -298,7 +298,7 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
         menu.addItem(accelItem)
 
         let verboseItem = NSMenuItem(
-            title: "🔇 终端事件日志静默 (Debug)",
+            title: L10n.t("🔇 终端事件日志静默 (Debug)", "🔇 Quiet Event Log (Debug)"),
             action: #selector(onToggleVerbose),
             keyEquivalent: ""
         )
@@ -311,7 +311,7 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
 
         // 7. Status Bar Display Settings & Utilities
         let showTextItem = NSMenuItem(
-            title: "在状态栏显示文字 (如 已连接/运行中)",
+            title: L10n.t("在状态栏显示文字 (如 已连接/运行中)", "Show Status Text in Menu Bar (e.g. Connected/Running)"),
             action: #selector(onToggleStatusText),
             keyEquivalent: ""
         )
@@ -319,32 +319,32 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
         showTextItem.state = showStatusTextInBar ? .on : .off
         menu.addItem(showTextItem)
 
-        let webItem = NSMenuItem(title: "🌐 打开 Web 遥控控制台...", action: #selector(onOpenWeb), keyEquivalent: "")
+        let webItem = NSMenuItem(title: L10n.t("🌐 打开 Web 遥控控制台...", "🌐 Open Web Remote Console..."), action: #selector(onOpenWeb), keyEquivalent: "")
         webItem.target = self
         webItem.isEnabled = isOnline
         menu.addItem(webItem)
 
-        let debugItem = NSMenuItem(title: "🛠️ 打开 Web 系统日志 (/debug)...", action: #selector(onOpenDebugWeb), keyEquivalent: "")
+        let debugItem = NSMenuItem(title: L10n.t("🛠️ 打开 Web 系统日志 (/debug)...", "🛠️ Open Web System Log (/debug)..."), action: #selector(onOpenDebugWeb), keyEquivalent: "")
         debugItem.target = self
         debugItem.isEnabled = isOnline
         menu.addItem(debugItem)
 
-        let logFileItem = NSMenuItem(title: "📄 打开本地日志文件 (atv-core.log)...", action: #selector(onOpenLogFile), keyEquivalent: "")
+        let logFileItem = NSMenuItem(title: L10n.t("📄 打开本地日志文件 (atv-core.log)...", "📄 Open Log File (atv-core.log)..."), action: #selector(onOpenLogFile), keyEquivalent: "")
         logFileItem.target = self
         menu.addItem(logFileItem)
 
-        let permItem = NSMenuItem(title: "🛡️ 检查辅助功能权限...", action: #selector(onCheckPermissions), keyEquivalent: "")
+        let permItem = NSMenuItem(title: L10n.t("🛡️ 检查辅助功能权限...", "🛡️ Check Accessibility Permission..."), action: #selector(onCheckPermissions), keyEquivalent: "")
         permItem.target = self
         menu.addItem(permItem)
 
-        let refreshItem = NSMenuItem(title: "🔄 刷新服务状态", action: #selector(onRefreshManual), keyEquivalent: "r")
+        let refreshItem = NSMenuItem(title: L10n.t("🔄 刷新服务状态", "🔄 Refresh Service Status"), action: #selector(onRefreshManual), keyEquivalent: "r")
         refreshItem.target = self
         menu.addItem(refreshItem)
 
         menu.addItem(NSMenuItem.separator())
 
         // 8. Quit Application
-        let quitItem = NSMenuItem(title: "🚪 退出 Apple TV Remote", action: #selector(onQuit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: L10n.t("🚪 退出 Apple TV Remote", "🚪 Quit Apple TV Remote"), action: #selector(onQuit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
     }
@@ -363,8 +363,10 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
                 self?.refresh()
 
                 let content = UNMutableNotificationContent()
-                content.title = success ? "✅ 服务已启动" : "❌ 服务启动失败"
-                content.body = success ? "Apple TV Remote 服务现已在后台运行。" : "未能启动 atv-core 后台服务，请检查端口是否被占用。"
+                content.title = success ? L10n.t("✅ 服务已启动", "✅ Service started") : L10n.t("❌ 服务启动失败", "❌ Service failed to start")
+                content.body = success
+                    ? L10n.t("Apple TV Remote 服务现已在后台运行。", "The Apple TV Remote service is now running in the background.")
+                    : L10n.t("未能启动 atv-core 后台服务，请检查端口是否被占用。", "Couldn't start the atv-core background service. Check whether its port is already in use.")
                 let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
                 UNUserNotificationCenter.current().add(req, withCompletionHandler: nil)
             }
@@ -385,8 +387,8 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
                 self?.rebuildMenu()
 
                 let content = UNMutableNotificationContent()
-                content.title = "⏸ 服务已停止"
-                content.body = "Apple TV Remote 后台服务已关闭，端口已释放。"
+                content.title = L10n.t("⏸ 服务已停止", "⏸ Service stopped")
+                content.body = L10n.t("Apple TV Remote 后台服务已关闭，端口已释放。", "The Apple TV Remote background service has stopped and freed its port.")
                 let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
                 UNUserNotificationCenter.current().add(req, withCompletionHandler: nil)
             }
@@ -405,8 +407,10 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
                 self?.refresh()
 
                 let content = UNMutableNotificationContent()
-                content.title = success ? "🔄 服务重启成功" : "❌ 服务重启失败"
-                content.body = success ? "Apple TV Remote 服务已重新启动。" : "服务未能成功重启，请检查日志。"
+                content.title = success ? L10n.t("🔄 服务重启成功", "🔄 Service restarted") : L10n.t("❌ 服务重启失败", "❌ Service failed to restart")
+                content.body = success
+                    ? L10n.t("Apple TV Remote 服务已重新启动。", "The Apple TV Remote service has restarted.")
+                    : L10n.t("服务未能成功重启，请检查日志。", "The service didn't restart. Check the log.")
                 let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
                 UNUserNotificationCenter.current().add(req, withCompletionHandler: nil)
             }
