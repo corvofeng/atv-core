@@ -17,6 +17,20 @@ pub struct CGPoint {
     pub y: f64,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct CGSize {
+    pub width: f64,
+    pub height: f64,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct CGRect {
+    pub origin: CGPoint,
+    pub size: CGSize,
+}
+
 pub type CGEventRef = *mut c_void;
 pub type CGEventSourceRef = *mut c_void;
 
@@ -92,6 +106,12 @@ extern "C" {
     fn CGMainDisplayID() -> u32;
     fn CGDisplayPixelsWide(display: u32) -> usize;
     fn CGDisplayPixelsHigh(display: u32) -> usize;
+    fn CGGetActiveDisplayList(
+        max_displays: u32,
+        active_displays: *mut u32,
+        display_count: *mut u32,
+    ) -> i32;
+    fn CGDisplayBounds(display: u32) -> CGRect;
 }
 
 /// Send macOS system-defined media key (Play/Pause, Vol+/-, Mute, Next/Prev)
@@ -379,6 +399,50 @@ impl MacDelegate {
         }
     }
 
+    /// Bounds of the whole desktop, i.e. the union of every active display, as
+    /// `(left, top, right, bottom)` in the global point space that `CGEvent`
+    /// coordinates use. Secondary displays placed left of or above the main
+    /// display have negative coordinates, hence the need for all four edges.
+    ///
+    /// This mirrors `virtual_screen()` in the Windows controller.
+    fn desktop_bounds() -> (f64, f64, f64, f64) {
+        let mut displays = [0u32; 16];
+        let mut count = 0u32;
+        let listed = unsafe {
+            CGGetActiveDisplayList(displays.len() as u32, displays.as_mut_ptr(), &mut count) == 0
+                && count > 0
+        };
+
+        if listed {
+            let (mut left, mut top) = (f64::MAX, f64::MAX);
+            let (mut right, mut bottom) = (f64::MIN, f64::MIN);
+            for &display in displays.iter().take(count as usize) {
+                let rect = unsafe { CGDisplayBounds(display) };
+                left = left.min(rect.origin.x);
+                top = top.min(rect.origin.y);
+                right = right.max(rect.origin.x + rect.size.width - 1.0);
+                bottom = bottom.max(rect.origin.y + rect.size.height - 1.0);
+            }
+            if left < right && top < bottom {
+                return (left, top, right, bottom);
+            }
+        }
+
+        // Fallback: main display only.
+        let (w, h) = Self::display_size();
+        (0.0, 0.0, w, h)
+    }
+
+    /// Clamp a point into the desktop union so the cursor can be moved across
+    /// every connected display.
+    fn clamp_to_desktop(point: CGPoint, bounds: (f64, f64, f64, f64)) -> CGPoint {
+        let (left, top, right, bottom) = bounds;
+        CGPoint {
+            x: point.x.clamp(left, right),
+            y: point.y.clamp(top, bottom),
+        }
+    }
+
     fn send_key_press(virtual_key: u16) {
         unsafe {
             let event_down = CGEventCreateKeyboardEvent(std::ptr::null_mut(), virtual_key, true);
@@ -451,11 +515,14 @@ impl MacDelegate {
         let move_x = dx * accel * scale;
         let move_y = dy * accel * scale;
 
-        let (screen_w, screen_h) = Self::display_size();
-        let target = CGPoint {
-            x: (cur.x + move_x).clamp(0.0, screen_w),
-            y: (cur.y + move_y).clamp(0.0, screen_h),
-        };
+        let bounds = Self::desktop_bounds();
+        let target = Self::clamp_to_desktop(
+            CGPoint {
+                x: cur.x + move_x,
+                y: cur.y + move_y,
+            },
+            bounds,
+        );
 
         *guard = Some(target);
         drop(guard);
@@ -736,7 +803,9 @@ impl AtvDelegate for MacDelegate {
     }
 
     fn get_screen_size(&self) -> Option<(f64, f64)> {
-        Some(Self::display_size())
+        // Size of the whole desktop (all displays), not just the main display.
+        let (left, top, right, bottom) = Self::desktop_bounds();
+        Some((right - left, bottom - top))
     }
 
     fn get_audio_state(&self) -> Option<(f64, bool)> {
