@@ -20,8 +20,11 @@ final class DebugWebServer {
             let nwPort = NWEndpoint.Port(rawValue: port) ?? 8766
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
+            // Diagnostics can restart the engine and empty the log, so they only answer on this Mac
+            // (http://127.0.0.1), not to other devices on the network.
+            params.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: nwPort)
 
-            let l = try NWListener(using: params, on: nwPort)
+            let l = try NWListener(using: params)
             l.newConnectionHandler = { [weak self] connection in
                 self?.handleConnection(connection)
             }

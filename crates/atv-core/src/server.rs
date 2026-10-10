@@ -202,7 +202,9 @@ impl AtvServer {
 
         let mut actual_ui_port = None;
         if let Some(ui_p) = config.ui_port {
-            match TcpListener::bind((Ipv4Addr::UNSPECIFIED, ui_p)).await {
+            // The inspector has no authentication and can press buttons on this computer, so it
+            // only answers on this computer (http://127.0.0.1), not to other devices on the network.
+            match TcpListener::bind((Ipv4Addr::LOCALHOST, ui_p)).await {
                 Ok(ui_listener) => {
                     actual_ui_port = Some(ui_p);
                     tasks.push(tokio::spawn(ui_loop(
