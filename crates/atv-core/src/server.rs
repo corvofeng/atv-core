@@ -13,8 +13,9 @@ use std::time::Duration;
 #[cfg(not(target_os = "macos"))]
 use mdns_sd::{ServiceDaemon, ServiceInfo};
 use tokio::io::AsyncReadExt;
+use tokio::net::tcp::OwnedReadHalf;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{watch, Mutex};
+use tokio::sync::{mpsc, watch, Mutex};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
@@ -26,6 +27,7 @@ use crate::identity::{self, DeviceIdentity};
 use crate::inspector::InspectorHub;
 use crate::registry::{ActiveConnectionTracker, DeviceRegistry};
 use crate::session::{CompanionSession, DEVICE_MODEL};
+use crate::text_input::TextInputHub;
 use crate::FrameType;
 
 pub const MRP_PORT: u16 = 49152;
@@ -116,6 +118,7 @@ pub struct AtvServer {
     mouse_mode: Arc<AtomicBool>,
     trackpad_mode: Arc<AtomicU8>,
     delegate: Arc<dyn AtvDelegate>,
+    text_input: Arc<TextInputHub>,
     shutdown_tx: watch::Sender<bool>,
     tasks: Vec<JoinHandle<()>>,
     #[cfg(target_os = "macos")]
@@ -180,6 +183,7 @@ impl AtvServer {
         let airplay_port = airplay_listener.local_addr()?.port();
 
         let inspector = InspectorHub::new();
+        let text_input = TextInputHub::new();
 
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let mut tasks = Vec::new();
@@ -197,6 +201,7 @@ impl AtvServer {
             inspector.clone(),
             trackpad_mode.clone(),
             mouse_mode.clone(),
+            text_input.clone(),
             shutdown_rx.clone(),
         )));
 
@@ -377,6 +382,7 @@ impl AtvServer {
             mouse_mode,
             trackpad_mode,
             delegate,
+            text_input,
             shutdown_tx,
             tasks,
             #[cfg(target_os = "macos")]
@@ -468,6 +474,17 @@ impl AtvServer {
         new_mode.is_mouse()
     }
 
+    /// Report whether a text field is focused on the TV, which one (`field`
+    /// is any stable identity the host picks) and its current text.
+    /// `_tiStart` is answered from this state. Phones that sent it get
+    /// `_tiStarted` / `_tiStopped` when focus changes, and both in a row when
+    /// another field takes focus or the text changes on the TV side. Set
+    /// `from_phone` when the text changed only because the host applied edits
+    /// from [`AtvDelegate::on_text`]; the phone already shows those.
+    pub fn set_text_focus(&self, focused: bool, field: &str, text: &str, from_phone: bool) {
+        self.text_input.set_focus(focused, field, text, from_phone);
+    }
+
     /// Unregister Bonjour services and stop all listeners.
     pub async fn stop(self) {
         let _ = self.shutdown_tx.send(true);
@@ -550,6 +567,7 @@ async fn companion_loop(
     inspector: Arc<InspectorHub>,
     trackpad_mode: Arc<AtomicU8>,
     mouse_mode: Arc<AtomicBool>,
+    text_input: Arc<TextInputHub>,
     mut shutdown: watch::Receiver<bool>,
 ) {
     let registry = Arc::new(Mutex::new(DeviceRegistry::new(Duration::from_secs(24 * 3600))));
@@ -573,13 +591,64 @@ async fn companion_loop(
         let mouse_mode = mouse_mode.clone();
         let registry = registry.clone();
         let active_tracker = active_tracker.clone();
+        let text_input = text_input.clone();
         let mut client_shutdown = shutdown.clone();
         tokio::spawn(async move {
             tokio::select! {
-                _ = handle_companion(stream, identity, pin, delegate, inspector, trackpad_mode, mouse_mode, registry, active_tracker) => {},
+                _ = handle_companion(stream, identity, pin, delegate, inspector, trackpad_mode, mouse_mode, registry, active_tracker, text_input) => {},
                 _ = client_shutdown.changed() => {},
             }
         });
+    }
+}
+
+const MAX_FRAME_LENGTH: usize = 2 * 1024 * 1024; // 2MB protection against malformed frames
+
+/// A whole Companion frame, or the disconnect reason once reading stops.
+type IncomingFrame = std::result::Result<(FrameType, [u8; 4], Vec<u8>), String>;
+
+struct AbortOnDrop(JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Read frames on a task of their own. `read_exact` is not cancellation-safe,
+/// so the connection loop must not race it against other events; it selects
+/// on this channel instead, which can be cancelled between frames.
+async fn read_frames(mut reader: OwnedReadHalf, peer: String, tx: mpsc::Sender<IncomingFrame>) {
+    loop {
+        let mut header = [0u8; 4];
+        if let Err(e) = reader.read_exact(&mut header).await {
+            let reason = if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                "peer_closed".to_string()
+            } else {
+                format!("error:{e}")
+            };
+            let _ = tx.send(Err(reason)).await;
+            return;
+        }
+        let Some(frame_type) = FrameType::from_u8(header[0]) else {
+            warn!("unknown frame type {}", header[0]);
+            let _ = tx.send(Err(format!("error:unknown frame type {}", header[0]))).await;
+            return;
+        };
+        let length = u32::from_be_bytes([0, header[1], header[2], header[3]]) as usize;
+        if length > MAX_FRAME_LENGTH {
+            warn!("companion frame exceeds limit: {length} bytes from {peer}");
+            let _ = tx.send(Err(format!("error:frame too large ({length} bytes)"))).await;
+            return;
+        }
+        let mut payload = vec![0u8; length];
+        if let Err(e) = reader.read_exact(&mut payload).await {
+            let _ = tx.send(Err(format!("incomplete_frame:{e}"))).await;
+            return;
+        }
+        if tx.send(Ok((frame_type, header, payload))).await.is_err() {
+            return;
+        }
     }
 }
 
@@ -593,6 +662,7 @@ async fn handle_companion(
     mouse_mode: Arc<AtomicBool>,
     registry: Arc<Mutex<DeviceRegistry>>,
     active_tracker: Arc<Mutex<ActiveConnectionTracker>>,
+    text_input: Arc<TextInputHub>,
 ) {
     let peer_addr = stream.peer_addr().ok();
     let peer = peer_addr
@@ -614,8 +684,12 @@ async fn handle_companion(
         tracker.register(peer_ip, session_established.clone())
     };
 
-    let (mut reader, writer) = stream.into_split();
+    let (reader, writer) = stream.into_split();
     let writer = Arc::new(Mutex::new(writer));
+    let (frame_tx, mut frame_rx) = mpsc::channel::<IncomingFrame>(16);
+    // Aborted on drop too, so the socket closes when shutdown cancels this future.
+    let _reader_task = AbortOnDrop(tokio::spawn(read_frames(reader, peer.clone(), frame_tx)));
+    let (text_push_tx, mut text_push_rx) = mpsc::unbounded_channel();
     let mut session = CompanionSession::new(
         writer,
         delegate.clone(),
@@ -629,11 +703,11 @@ async fn handle_companion(
         conn_id,
         peer_ip.to_string(),
         session_established,
+        text_input.clone(),
+        text_push_tx,
     );
     let timeout_deadline = session.timeout_deadline();
     let mut disconnect_reason = "peer_closed".to_string();
-
-    const MAX_FRAME_LENGTH: usize = 2 * 1024 * 1024; // 2MB protection against malformed frames
 
     loop {
         let deadline = *timeout_deadline.lock().await;
@@ -646,17 +720,28 @@ async fn handle_companion(
             }
         };
 
-        let mut header = [0u8; 4];
         tokio::select! {
-            res = reader.read_exact(&mut header) => {
-                match res {
-                    Ok(_) => {}
-                    Err(e) => {
-                        if e.kind() != std::io::ErrorKind::UnexpectedEof {
-                            disconnect_reason = format!("error:{e}");
-                        }
+            frame = frame_rx.recv() => {
+                let (frame_type, header, payload) = match frame {
+                    Some(Ok(frame)) => frame,
+                    Some(Err(reason)) => {
+                        disconnect_reason = reason;
                         break;
                     }
+                    None => break,
+                };
+                debug!("companion frame={:?} length={}", frame_type, payload.len());
+                if let Err(e) = session.handle_frame(frame_type, &payload, &header).await {
+                    disconnect_reason = format!("error:{e}");
+                    warn!("companion error: {e}");
+                    break;
+                }
+            }
+            Some(push) = text_push_rx.recv() => {
+                if let Err(e) = session.push_text_input(push).await {
+                    disconnect_reason = format!("error:{e}");
+                    warn!("companion error: {e}");
+                    break;
                 }
             }
             _ = abort_rx.changed() => {
@@ -670,32 +755,13 @@ async fn handle_companion(
                     info!("companion connection from {peer} timed out without remote session; closing to free channel");
                     break;
                 }
+                // The session came up meanwhile: drop the deadline so it does not fire again.
+                *timeout_deadline.lock().await = None;
             }
-        }
-        let Some(frame_type) = FrameType::from_u8(header[0]) else {
-            disconnect_reason = format!("error:unknown frame type {}", header[0]);
-            warn!("unknown frame type {}", header[0]);
-            break;
-        };
-        let length = u32::from_be_bytes([0, header[1], header[2], header[3]]) as usize;
-        if length > MAX_FRAME_LENGTH {
-            disconnect_reason = format!("error:frame too large ({length} bytes)");
-            warn!("companion frame exceeds limit: {length} bytes from {peer}");
-            break;
-        }
-        let mut payload = vec![0u8; length];
-        if let Err(e) = reader.read_exact(&mut payload).await {
-            disconnect_reason = format!("incomplete_frame:{e}");
-            break;
-        }
-        debug!("companion frame={:?} length={length}", frame_type);
-        if let Err(e) = session.handle_frame(frame_type, &payload, &header).await {
-            disconnect_reason = format!("error:{e}");
-            warn!("companion error: {e}");
-            break;
         }
     }
 
+    text_input.unsubscribe(conn_id);
     {
         let mut tracker = active_tracker.lock().await;
         tracker.unregister(conn_id);

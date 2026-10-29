@@ -230,6 +230,8 @@ class AtvService : Service(), AtvNative.Callback {
                     val started = AtvNative.nativeStartServer(name, pin, deviceId, serverId, localIp!!, this)
                     if (started) {
                         isRunning = true
+                        // A field may already be focused; the new server starts unfocused.
+                        AtvAccessibilityService.instance?.resendTextFocus()
                         broadcast("ServerStatus", "running")
                         Log.i(TAG, "Native server started successfully on attempt $attempts with IP $localIp")
                         break
@@ -295,6 +297,19 @@ class AtvService : Service(), AtvNative.Callback {
 
     override fun onAudio(volume: Double, muted: Boolean) {
         broadcast("Audio", "vol=$volume muted=$muted")
+    }
+
+    override fun onText(kind: String, text: String, count: Int) {
+        val service = AtvAccessibilityService.instance
+        if (service == null) {
+            Log.w(TAG, "onText: accessibility service is not running, $kind dropped")
+            return
+        }
+        try {
+            service.handleTextOp(kind, text, count)
+        } catch (e: Exception) {
+            Log.e(TAG, "onText: $kind failed", e)
+        }
     }
 
     override fun onEvent(kind: String, detail: String) {

@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use tokio::runtime::Runtime;
 use tracing::{error, info, warn};
 
-use atv_core::{AtvConfig, AtvDelegate, AtvServer, EventKind, TouchPhase};
+use atv_core::{AtvConfig, AtvDelegate, AtvServer, EventKind, TextOp, TouchPhase};
 
 struct JniDelegate {
     jvm: JavaVM,
@@ -78,6 +78,32 @@ impl AtvDelegate for JniDelegate {
                 "onAudio",
                 "(DZ)V",
                 &[JValue::Double(volume), JValue::Bool(muted as u8)],
+            );
+        }
+    }
+
+    fn on_text(&self, op: TextOp) {
+        // Kotlin side: onText(kind, text, count) with kind "insert" | "delete" | "replace".
+        let (kind, text, count) = match &op {
+            TextOp::Insert(text) => ("insert", text.as_str(), 0),
+            TextOp::Delete(count) => ("delete", "", i32::try_from(*count).unwrap_or(i32::MAX)),
+            TextOp::Replace(text) => ("replace", text.as_str(), 0),
+        };
+        if let Ok(mut env) = self.jvm.attach_current_thread() {
+            let (Ok(kind_str), Ok(text_str)) = (env.new_string(kind), env.new_string(text)) else {
+                warn!("failed to create JString for on_text");
+                return;
+            };
+            let obj = self.callback.as_obj();
+            let _ = env.call_method(
+                obj,
+                "onText",
+                "(Ljava/lang/String;Ljava/lang/String;I)V",
+                &[
+                    JValue::Object(&kind_str),
+                    JValue::Object(&text_str),
+                    JValue::Int(count),
+                ],
             );
         }
     }
@@ -231,6 +257,31 @@ pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeStopServer(
         }
         IS_RUNNING.store(false, Ordering::SeqCst);
         info!("AtvServer stopped on Android TV");
+    }
+}
+
+/// Returns false when no server is running, so the caller reports the state again later.
+#[no_mangle]
+pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeSetTextFocus(
+    mut env: JNIEnv,
+    _class: JClass,
+    focused: jboolean,
+    field: JString,
+    text: JString,
+    from_phone: jboolean,
+) -> jboolean {
+    let field: String = env.get_string(&field).map(Into::into).unwrap_or_default();
+    let text: String = env.get_string(&text).map(Into::into).unwrap_or_default();
+    let state_guard = match SERVER_STATE.lock() {
+        Ok(guard) => guard,
+        Err(_) => return JNI_FALSE,
+    };
+    match state_guard.as_ref().and_then(|running| running.server.as_ref()) {
+        Some(server) => {
+            server.set_text_focus(focused != JNI_FALSE, &field, &text, from_phone != JNI_FALSE);
+            JNI_TRUE
+        }
+        None => JNI_FALSE,
     }
 }
 

@@ -6,6 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Path
 import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
@@ -67,8 +70,177 @@ class AtvAccessibilityService : AccessibilityService() {
         }
     }
 
+    private val textFocusHandler = Handler(Looper.getMainLooper())
+
+    // Last text-field state the core accepted; touched only on the main thread.
+    private var reportedTextFocus = false
+    private var reportedField = ""
+    private var reportedText = ""
+
+    // Guards the fields below and every write into the focused field, so the main
+    // thread never sees a write without its bookkeeping.
+    private val textLock = Any()
+
+    // What handleTextOp last wrote and into which field, so the text change it causes
+    // is reported as the phone's own edit rather than as a new document.
+    private var writtenField: String? = null
+    private var writtenText: String? = null
+
+    // A password field exposes dots instead of its text, so the service builds new
+    // values from its own copy of what it typed into the current one.
+    private var passwordField: String? = null
+    private var passwordText = ""
+
+    private class TextFocusReport(
+        val focused: Boolean,
+        val field: String,
+        val text: String,
+        val fromPhone: Boolean
+    )
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // No-op
+        when (event?.eventType) {
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> updateTextFocus(force = false)
+        }
+    }
+
+    /** Report the text-field state again, e.g. to a native server that just started. */
+    fun resendTextFocus() {
+        textFocusHandler.post { updateTextFocus(force = true) }
+    }
+
+    /**
+     * A text field counts as focused when the input-focused node is editable. On Android TV
+     * input focus follows the D-pad highlight, so the phone keyboard comes up as soon as a
+     * field is highlighted, even while the TV keyboard is hidden. The IME window cannot be
+     * the signal: some boxes do not show it to accessibility even while it is up.
+     * Changes go to the core, which tells the phone to raise, reload or drop its keyboard.
+     */
+    private fun updateTextFocus(force: Boolean) {
+        val report = synchronized(textLock) {
+            val field = findEditableFocus()
+            val key = field?.let { fieldKey(it) } ?: ""
+            // A password is never sent to the phone (and is not readable anyway).
+            val text = if (field == null || field.isPassword) "" else fieldText(field)
+            if (key != passwordField) {
+                passwordField = null
+                passwordText = ""
+            }
+            val focused = field != null
+            if (!force && focused == reportedTextFocus && key == reportedField &&
+                text == reportedText
+            ) {
+                return
+            }
+            val fromPhone = key == writtenField && text == writtenText
+            writtenField = null
+            writtenText = null
+            TextFocusReport(focused, key, text, fromPhone)
+        }
+        val accepted = try {
+            AtvNative.nativeSetTextFocus(report.focused, report.field, report.text, report.fromPhone)
+        } catch (e: Throwable) {
+            // UnsatisfiedLinkError when the native library failed to load.
+            Log.w(TAG, "nativeSetTextFocus failed", e)
+            false
+        }
+        Log.i(
+            TAG,
+            "Text field focused=${report.focused} field=${report.field} " +
+                "(${report.text.length} chars, fromPhone=${report.fromPhone}) accepted=$accepted"
+        )
+        // Not running yet: keep the old state so the next event or resend reports again.
+        if (accepted) {
+            reportedTextFocus = report.focused
+            reportedField = report.field
+            reportedText = report.text
+        }
+    }
+
+    private fun findEditableFocus(): AccessibilityNodeInfo? =
+        findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
+
+    // AccessibilityNodeInfo.hashCode() is derived from the view's accessibility id and
+    // the window id, so it names the same view across lookups. viewIdResourceName would
+    // need flagReportViewIds and is null for views without an id.
+    private fun fieldKey(field: AccessibilityNodeInfo): String =
+        "${field.windowId}:${field.hashCode()}"
+
+    // An empty field reports its hint as text.
+    private fun fieldText(field: AccessibilityNodeInfo): String =
+        if (field.isShowingHintText) "" else field.text?.toString() ?: ""
+
+    /** Apply one edit typed on the phone's keyboard to the focused field. */
+    @Synchronized
+    fun handleTextOp(kind: String, text: String, count: Int) {
+        val field = findEditableFocus()
+        if (field == null) {
+            Log.w(TAG, "Text $kind dropped: no editable field in focus")
+            return
+        }
+        val key = fieldKey(field)
+        val current = synchronized(textLock) {
+            if (field.isPassword) {
+                if (key != passwordField) {
+                    passwordField = key
+                    passwordText = ""
+                }
+                passwordText
+            } else {
+                fieldText(field)
+            }
+        }
+        when (kind) {
+            "insert" -> insertText(field, key, current, text)
+            "delete" -> setFieldText(field, key, dropLastChars(current, count))
+            "replace" -> setFieldText(field, key, text)
+            else -> Log.w(TAG, "Unknown text op: $kind")
+        }
+    }
+
+    // Return arrives as "\n": the text around it goes into the field and each
+    // newline becomes an Enter press, which starts the search in leanback search bars.
+    private fun insertText(field: AccessibilityNodeInfo, key: String, current: String, text: String) {
+        val lines = text.split('\n')
+        var buffer = current
+        lines.forEachIndexed { index, line ->
+            if (line.isNotEmpty()) {
+                buffer += line
+                setFieldText(field, key, buffer)
+            }
+            if (index < lines.lastIndex) {
+                KeyDispatcher.dispatchButton("enter")
+            }
+        }
+    }
+
+    // Drops UTF-16 units without leaving half of a surrogate pair behind.
+    private fun dropLastChars(text: String, count: Int): String {
+        var end = (text.length - count).coerceAtLeast(0)
+        if (end > 0 && Character.isHighSurrogate(text[end - 1])) end--
+        return text.substring(0, end)
+    }
+
+    private fun setFieldText(field: AccessibilityNodeInfo, key: String, value: String) {
+        val args = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value)
+        }
+        synchronized(textLock) {
+            if (!field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                Log.w(TAG, "ACTION_SET_TEXT failed")
+                return
+            }
+            writtenField = key
+            if (field.isPassword) {
+                passwordText = value
+                writtenText = "" // passwords are reported empty
+            } else {
+                writtenText = value
+            }
+        }
     }
 
     override fun onInterrupt() {

@@ -14,6 +14,13 @@ object AtvNative {
         fun onTouch(dx: Double, dy: Double, phase: Int)
         fun onAudio(volume: Double, muted: Boolean)
         fun onEvent(kind: String, detail: String)
+
+        /**
+         * The phone's keyboard edited the focused text field.
+         * kind: "insert" (text, Return is "\n"), "delete" (count chars before the cursor)
+         * or "replace" (text is the whole new field content).
+         */
+        fun onText(kind: String, text: String, count: Int)
     }
 
     external fun nativeStartServer(
@@ -27,4 +34,16 @@ object AtvNative {
 
     external fun nativeStopServer()
     external fun nativeIsRunning(): Boolean
+
+    /**
+     * Report whether an editable field is focused on the TV, which one (field is a stable key)
+     * and its current text. fromPhone marks text that only changed because edits from the
+     * phone were applied. Returns false when the server is not running.
+     */
+    external fun nativeSetTextFocus(
+        focused: Boolean,
+        field: String,
+        text: String,
+        fromPhone: Boolean
+    ): Boolean
 }

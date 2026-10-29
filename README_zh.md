@@ -116,6 +116,7 @@ xattr -dr com.apple.quarantine /Applications/AppleTVRemote.app
 | **静音** | `KEYCODE_VOLUME_MUTE` | 系统静音 |
 | **侧边 Siri 键** | 语音搜索（`KEYCODE_SEARCH`） | 切换 光标 ⇄ 方向键 / Siri |
 | **电源** | `GLOBAL_ACTION_POWER_DIALOG` | 屏幕睡眠 / 唤醒 |
+| **iPhone 键盘** | 由无障碍服务输入到当前聚焦的文本框；Return 发送 `KEYCODE_ENTER` | — |
 
 ---
 

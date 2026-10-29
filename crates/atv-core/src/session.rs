@@ -7,6 +7,7 @@ use std::sync::Arc;
 use ed25519_dalek::{Signer, SigningKey};
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp::OwnedWriteHalf;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
@@ -19,6 +20,7 @@ use crate::inspector::InspectorHub;
 use crate::opack::{self, Value};
 use crate::registry::{ActiveConnectionTracker, DeviceRegistry};
 use crate::srp::SrpServer;
+use crate::text_input::{self, TextInputHub, TextInputPush};
 use crate::tlv::{self, tags};
 use crate::FrameType;
 
@@ -99,6 +101,9 @@ pub struct CompanionSession {
     peer_ip: String,
     device_id: Option<String>,
     timeout_deadline: Arc<Mutex<Option<tokio::time::Instant>>>,
+    text_input: Arc<TextInputHub>,
+    /// Where the hub delivers focus changes for this connection.
+    text_push_tx: UnboundedSender<TextInputPush>,
 }
 
 impl CompanionSession {
@@ -115,6 +120,8 @@ impl CompanionSession {
         conn_id: u64,
         peer_ip: String,
         session_established: Arc<AtomicBool>,
+        text_input: Arc<TextInputHub>,
+        text_push_tx: UnboundedSender<TextInputPush>,
     ) -> Self {
         let signing_key = SigningKey::from_bytes(&identity.private_key);
         let auth_pub = signing_key.verifying_key().to_bytes();
@@ -155,6 +162,8 @@ impl CompanionSession {
             peer_ip,
             device_id: None,
             timeout_deadline: Arc::new(Mutex::new(None)),
+            text_input,
+            text_push_tx,
         }
     }
 
@@ -298,6 +307,26 @@ impl CompanionSession {
             .await?;
         self.send_event("TVSystemStatus", xid, Some(content)).await?;
         Ok(())
+    }
+
+    /// Tell the phone that a text field on the TV gained or lost focus.
+    pub async fn push_text_input(&mut self, push: TextInputPush) -> Result<()> {
+        let xid = Some(rand::random::<u32>() as u64);
+        match push {
+            TextInputPush::Started(tid) => {
+                info!(">> _tiStarted");
+                self.send_event(
+                    "_tiStarted",
+                    xid,
+                    Some(Value::dict(vec![Value::kv("_tiD", Value::Bytes(tid))])),
+                )
+                .await
+            }
+            TextInputPush::Stopped => {
+                info!(">> _tiStopped");
+                self.send_event("_tiStopped", xid, None).await
+            }
+        }
     }
 
     pub async fn handle_frame(
@@ -660,9 +689,16 @@ impl CompanionSession {
                 self.send_response(xid, None, 0).await?;
                 self.handle_touch(&content);
             }
-            Some("_touchStop") | Some("_touchMove") | Some("_tiStop") => {
+            Some("_touchStop") | Some("_touchMove") => {
                 self.session_established.store(true, Ordering::SeqCst);
                 *self.timeout_deadline.lock().await = None;
+                self.send_response(xid, None, 0).await?;
+            }
+            Some("_tiStop") => {
+                self.session_established.store(true, Ordering::SeqCst);
+                *self.timeout_deadline.lock().await = None;
+                // The phone closed its remote; stop pushing focus changes to it.
+                self.text_input.unsubscribe(self.conn_id);
                 self.send_response(xid, None, 0).await?;
             }
             Some("_interest") => {
@@ -724,12 +760,37 @@ impl CompanionSession {
                 self.handle_media_control(&content, xid).await?;
             }
             Some("_tiStart") => {
-                self.send_response(
-                    xid,
-                    Some(Value::dict(vec![Value::kv("_tiE", Value::Bool(false))])),
-                    0,
-                )
-                .await?;
+                // Remember this connection for focus pushes. With a focused
+                // field the phone raises its keyboard on the `_tiD` reply.
+                let reply = match self
+                    .text_input
+                    .subscribe(self.conn_id, self.text_push_tx.clone())
+                {
+                    Some(tid) => {
+                        info!("<< _tiStart: text field focused, answering with _tiD");
+                        Value::kv("_tiD", Value::Bytes(tid))
+                    }
+                    None => Value::kv("_tiE", Value::Bool(false)),
+                };
+                self.send_response(xid, Some(Value::dict(vec![reply])), 0)
+                    .await?;
+            }
+            Some("_tiC") => {
+                match content.get("_tiD").and_then(Value::as_bytes) {
+                    Some(tid) => match text_input::parse_text_operations(tid) {
+                        Ok(ops) => {
+                            for op in ops {
+                                debug!("<< _tiC {op:?}");
+                                self.delegate.on_text(op);
+                            }
+                        }
+                        Err(e) => warn!("<< _tiC dropped: {e}"),
+                    },
+                    None => warn!("<< _tiC without _tiD: {content}"),
+                }
+                if xid.is_some() {
+                    self.send_response(xid, None, 0).await?;
+                }
             }
             Some("FetchLaunchableApplicationsEvent") => {
                 self.send_response(
