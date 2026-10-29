@@ -323,7 +323,7 @@ svg_emulator_flow_en = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1
     <text x="16" y="65" class="desc">Swipe down iOS Control</text>
     <text x="16" y="83" class="desc">Center &amp; tap TV Remote</text>
     <rect x="14" y="105" width="157" height="36" rx="6" fill="#1e293b"/>
-    <text x="24" y="127" class="label" fill="#93c5fd">Pairing PIN: 1111</text>
+    <text x="24" y="127" class="label" fill="#93c5fd">Code shown on screen</text>
     <rect x="14" y="150" width="157" height="52" rx="6" fill="#090d16" stroke="#1e293b"/>
     <text x="24" y="170" class="desc" font-size="11" fill="#34d399">● TLS Session Active</text>
     <text x="24" y="188" class="desc" font-size="11">Direct zero-lag control</text>

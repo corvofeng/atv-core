@@ -4,13 +4,24 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.Path
+import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.LinearLayout
+import android.widget.TextView
 
 class AtvAccessibilityService : AccessibilityService() {
 
@@ -76,9 +87,84 @@ class AtvAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        removePinOverlay()
         super.onDestroy()
         instance = null
         Log.i(TAG, "AtvAccessibilityService destroyed")
+    }
+
+    private val pinHandler = Handler(Looper.getMainLooper())
+    private var pinOverlay: View? = null
+
+    /**
+     * Show the pairing code over whatever is on screen until [hidePairingPin].
+     * [onFailure] runs on the main thread when the window cannot be added.
+     */
+    fun showPairingPin(pin: String, onFailure: () -> Unit) {
+        pinHandler.post {
+            removePinOverlay()
+            val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            if (wm == null) {
+                onFailure()
+                return@post
+            }
+            val density = resources.displayMetrics.density
+            val padding = (32 * density).toInt()
+            val overlay = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(padding * 2, padding, padding * 2, padding)
+                background = GradientDrawable().apply {
+                    setColor(0xE6121212.toInt())
+                    cornerRadius = 24 * density
+                }
+                addView(TextView(context).apply {
+                    text = pin
+                    setTextColor(Color.WHITE)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 96f)
+                    typeface = Typeface.DEFAULT_BOLD
+                    letterSpacing = 0.2f
+                    gravity = Gravity.CENTER
+                })
+                addView(TextView(context).apply {
+                    text = "Enter this code on your iPhone"
+                    setTextColor(0xFFECEFF1.toInt())
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+                    gravity = Gravity.CENTER
+                })
+            }
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                PixelFormat.TRANSLUCENT
+            ).apply { gravity = Gravity.CENTER }
+            try {
+                wm.addView(overlay, params)
+                pinOverlay = overlay
+                Log.i(TAG, "Pairing code shown")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to show the pairing code", e)
+                onFailure()
+            }
+        }
+    }
+
+    fun hidePairingPin() {
+        pinHandler.post { removePinOverlay() }
+    }
+
+    private fun removePinOverlay() {
+        val overlay = pinOverlay ?: return
+        pinOverlay = null
+        try {
+            (getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.removeView(overlay)
+            Log.i(TAG, "Pairing code hidden")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to remove the pairing code overlay", e)
+        }
     }
 
     @Volatile

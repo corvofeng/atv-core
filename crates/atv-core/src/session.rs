@@ -1,6 +1,7 @@
 //! Companion Link session: pairing, verification and the encrypted control
 //! channel. Ported from `fake_atv.py`'s `CompanionSession`.
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 
@@ -17,6 +18,7 @@ use crate::error::{Error, Result};
 use crate::identity::DeviceIdentity;
 use crate::inspector::InspectorHub;
 use crate::opack::{self, Value};
+use crate::pairing::{self, PairingPolicy};
 use crate::registry::{ActiveConnectionTracker, DeviceRegistry};
 use crate::srp::SrpServer;
 use crate::tlv::{self, tags};
@@ -37,6 +39,16 @@ const ALT_IRK: [u8; 16] = [
 ];
 
 pub type SharedWriter = Arc<Mutex<OwnedWriteHalf>>;
+
+/// Keys of a pair-verify between M1 and M3; the control channel is enabled
+/// only once M3 is accepted.
+struct PendingVerify {
+    session_key: [u8; 32],
+    client_pub: [u8; 32],
+    server_pub: [u8; 32],
+    output_key: [u8; 32],
+    input_key: [u8; 32],
+}
 
 fn hid_command_name(command: u64) -> String {
     match command {
@@ -72,6 +84,10 @@ pub struct CompanionSession {
     device_name: String,
     device_mac: [u8; 6],
     pin: u32,
+    pairing: PairingPolicy,
+    /// Random PIN of the pair-setup attempt in progress; Some while shown.
+    active_pin: Option<u32>,
+    pending_verify: Option<PendingVerify>,
     _mouse_mode: Arc<AtomicBool>,
     trackpad_mode: Arc<AtomicU8>,
     unique_id: Vec<u8>,
@@ -107,6 +123,7 @@ impl CompanionSession {
         delegate: Arc<dyn AtvDelegate>,
         identity: &DeviceIdentity,
         pin: u32,
+        pairing: PairingPolicy,
         mouse_mode: Arc<AtomicBool>,
         trackpad_mode: Arc<AtomicU8>,
         inspector: Arc<InspectorHub>,
@@ -128,6 +145,9 @@ impl CompanionSession {
             device_name: identity.name.clone(),
             device_mac: identity.mac_bytes,
             pin,
+            pairing,
+            active_pin: None,
+            pending_verify: None,
             _mouse_mode: mouse_mode,
             trackpad_mode,
             unique_id: identity.server_identifier.as_bytes().to_vec(),
@@ -360,7 +380,7 @@ impl CompanionSession {
             (FrameType::PsNext, 3) => self.pair_setup_m3(&pairing_data).await,
             (FrameType::PsNext, 5) => self.pair_setup_m5(&pairing_data).await,
             (FrameType::PvStart, 1) => self.pair_verify_m1(&pairing_data).await,
-            (FrameType::PvNext, 3) => self.pair_verify_m3().await,
+            (FrameType::PvNext, 3) => self.pair_verify_m3(&pairing_data).await,
             _ => {
                 warn!("unsupported auth step: frame={:?} seq={}", frame_type, seq);
                 Ok(())
@@ -368,18 +388,56 @@ impl CompanionSession {
         }
     }
 
+    /// Withdraw the PIN this connection asked the delegate to show, if any.
+    fn hide_pin(&mut self) {
+        if self.active_pin.take().is_some() {
+            info!("pairing PIN withdrawn");
+            self.delegate.hide_pairing_pin();
+            self.pairing.release_code(self.conn_id);
+        }
+    }
+
     async fn pair_setup_m1(&mut self) -> Result<()> {
+        if self.pairing.random_pin {
+            if !self.pairing.claim_code(self.conn_id) {
+                // One screen: another phone's code is up until that attempt ends.
+                warn!("pair-setup refused: another connection has a pairing code on screen");
+                self.inspector
+                    .emit("auth", "{\"step\":\"pair_setup_m1\",\"busy\":true}");
+                return self
+                    .send_opack(
+                        FrameType::PsNext,
+                        &Value::dict(vec![Value::kv(
+                            "_pd",
+                            Value::Bytes(tlv::write(&[
+                                (tags::SEQ_NO, &[0x02]),
+                                (tags::ERROR, &[0x07]),
+                            ])),
+                        )]),
+                    )
+                    .await;
+            }
+            // A new PIN, and an SRP verifier for it, for every attempt.
+            let pin = pairing::random_pin();
+            self.srp = SrpServer::new(pin, &self.private_key);
+            self.active_pin = Some(pin);
+            info!("pairing PIN is {pin:04}");
+            // No PIN here: the inspector stream is served to the network.
+            self.inspector.emit("auth", "{\"step\":\"pair_setup_m1\"}");
+            self.delegate.show_pairing_pin(&format!("{pin:04}"));
+        } else {
+            info!("pairing PIN is {:04}", self.pin);
+            self.inspector.emit(
+                "auth",
+                &format!("{{\"step\":\"pair_setup_m1\",\"pin\":{:04}}}", self.pin),
+            );
+        }
         let tlv_data = tlv::write(&[
             (tags::SEQ_NO, &[0x02]),
             (tags::SALT, self.srp.salt()),
             (tags::PUBLIC_KEY, &self.srp.public_key()),
             (27, &[0x01]),
         ]);
-        info!("pairing PIN is {:04}", self.pin);
-        self.inspector.emit(
-            "auth",
-            &format!("{{\"step\":\"pair_setup_m1\",\"pin\":{:04}}}", self.pin),
-        );
         self.send_opack(
             FrameType::PsNext,
             &Value::dict(vec![
@@ -397,11 +455,20 @@ impl CompanionSession {
         let public_key = pairing_data
             .get(&tags::PUBLIC_KEY)
             .ok_or_else(|| Error::Protocol("missing client public key".into()))?;
-        self.srp.process(public_key)?;
-        let proof_ok = pairing_data
-            .get(&tags::PROOF)
-            .map(|p| self.srp.verify_proof(p))
-            .unwrap_or(false);
+        let proof_ok = if self.pairing.random_pin && self.active_pin.is_none() {
+            // The PIN of a failed or finished attempt is gone; start over at M1.
+            warn!("pair-setup M3 without a PIN on screen");
+            false
+        } else {
+            self.srp.process(public_key)?;
+            pairing_data
+                .get(&tags::PROOF)
+                .map(|p| self.srp.verify_proof(p))
+                .unwrap_or(false)
+        };
+        if !proof_ok {
+            self.hide_pin();
+        }
         self.inspector.emit(
             "auth",
             &format!("{{\"step\":\"pair_setup_m3\",\"verified\":{proof_ok}}}"),
@@ -434,6 +501,42 @@ impl CompanionSession {
         let decrypted = chacha.decrypt(encrypted, None, Some(b"PS-Msg05"))?;
         let client_tlv = tlv::read(&decrypted);
         debug!("paired client: {} TLV entries", client_tlv.len());
+        match pairing::verify_setup_client(&client_tlv, &shared) {
+            Ok((identifier, ltpk)) => {
+                let label = String::from_utf8_lossy(&identifier).into_owned();
+                let saved = {
+                    let mut clients = self
+                        .pairing
+                        .clients
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    clients.insert(&identifier, ltpk)
+                };
+                match saved {
+                    Ok(()) => info!("paired client {label} stored"),
+                    Err(e) => warn!("paired client {label} kept in memory only: {e}"),
+                }
+            }
+            Err(e) if self.pairing.require_pairing => {
+                warn!("pair-setup rejected: {e}");
+                self.inspector
+                    .emit("auth", "{\"step\":\"pair_setup_m5\",\"verified\":false}");
+                self.hide_pin();
+                self.send_opack(
+                    FrameType::PsNext,
+                    &Value::dict(vec![Value::kv(
+                        "_pd",
+                        Value::Bytes(tlv::write(&[
+                            (tags::SEQ_NO, &[0x06]),
+                            (tags::ERROR, &[0x02]),
+                        ])),
+                    )]),
+                )
+                .await?;
+                return Err(e);
+            }
+            Err(e) => warn!("pair-setup: client signature not verified ({e}); not stored"),
+        }
 
         let accessory_x = hkdf_expand(
             "Pair-Setup-Accessory-Sign-Salt",
@@ -480,6 +583,7 @@ impl CompanionSession {
         )
         .await?;
         info!("pairing complete");
+        self.hide_pin();
         self.delegate.on_event(EventKind::Paired, "");
         self.inspector.emit("paired", "{}");
         // Fresh salt/verifier for the next pairing attempt.
@@ -524,11 +628,13 @@ impl CompanionSession {
             Some(b"PV-Msg02"),
         )?;
 
-        self.cipher = Some(CompanionCipher::new(
-            &hkdf_expand("", "ServerEncrypt-main", shared.as_bytes()),
-            &hkdf_expand("", "ClientEncrypt-main", shared.as_bytes()),
-            12,
-        )?);
+        self.pending_verify = Some(PendingVerify {
+            session_key,
+            client_pub,
+            server_pub,
+            output_key: hkdf_expand("", "ServerEncrypt-main", shared.as_bytes()),
+            input_key: hkdf_expand("", "ClientEncrypt-main", shared.as_bytes()),
+        });
 
         self.inspector.emit("auth", "{\"step\":\"pair_verify_m1\"}");
 
@@ -546,7 +652,66 @@ impl CompanionSession {
         .await
     }
 
-    async fn pair_verify_m3(&mut self) -> Result<()> {
+    /// When pairing is required, decrypt the client's M3 and check its
+    /// signature against the long-term key stored at pair-setup.
+    fn check_verify_m3(
+        &self,
+        pending: &PendingVerify,
+        pairing_data: &BTreeMap<u8, Vec<u8>>,
+    ) -> Result<()> {
+        if !self.pairing.require_pairing {
+            return Ok(());
+        }
+        let encrypted = pairing_data
+            .get(&tags::ENCRYPTED_DATA)
+            .ok_or_else(|| Error::Protocol("missing encrypted data".into()))?;
+        let mut chacha = CompanionCipher::new(&pending.session_key, &pending.session_key, 8)?;
+        let decrypted = chacha.decrypt(encrypted, None, Some(b"PV-Msg03"))?;
+        let clients = self
+            .pairing
+            .clients
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let identifier = pairing::verify_known_client(
+            &tlv::read(&decrypted),
+            &pending.client_pub,
+            &pending.server_pub,
+            &clients,
+        )?;
+        info!("pair-verify: paired client {}", String::from_utf8_lossy(&identifier));
+        Ok(())
+    }
+
+    async fn pair_verify_m3(&mut self, pairing_data: &BTreeMap<u8, Vec<u8>>) -> Result<()> {
+        let checked = match self.pending_verify.take() {
+            Some(pending) => self.check_verify_m3(&pending, pairing_data).map(|()| pending),
+            None => Err(Error::Protocol("pair-verify M3 before M1".into())),
+        };
+        let pending = match checked {
+            Ok(pending) => pending,
+            Err(e) => {
+                warn!("pair-verify rejected: {e}");
+                self.inspector
+                    .emit("auth", "{\"step\":\"pair_verify_m3\",\"verified\":false}");
+                self.send_opack(
+                    FrameType::PvNext,
+                    &Value::dict(vec![Value::kv(
+                        "_pd",
+                        Value::Bytes(tlv::write(&[
+                            (tags::SEQ_NO, &[0x04]),
+                            (tags::ERROR, &[0x02]),
+                        ])),
+                    )]),
+                )
+                .await?;
+                return Err(e);
+            }
+        };
+        self.cipher = Some(CompanionCipher::new(
+            &pending.output_key,
+            &pending.input_key,
+            12,
+        )?);
         self.send_opack(
             FrameType::PvNext,
             &Value::dict(vec![Value::kv(
@@ -1054,9 +1219,436 @@ impl CompanionSession {
 
 impl Drop for CompanionSession {
     fn drop(&mut self) {
+        self.hide_pin();
         if self.session_established.load(Ordering::SeqCst) {
             self.inspector.session_stopped();
         }
     }
 }
 
+#[cfg(test)]
+mod tests {
+    //! Pairing over a real socket: the test plays the phone, the session the TV.
+
+    use super::*;
+    use std::sync::atomic::AtomicU64;
+    use std::sync::Mutex as StdMutex;
+
+    use num_bigint::BigUint;
+    use sha2::{Digest, Sha512};
+    use tokio::io::AsyncReadExt;
+    use tokio::net::tcp::OwnedReadHalf;
+    use tokio::net::{TcpListener, TcpStream};
+
+    use crate::pairing::PairedClients;
+    use crate::srp::{int_to_bytes, PRIME_3072_HEX};
+
+    #[derive(Default)]
+    struct Recorder {
+        calls: StdMutex<Vec<String>>,
+    }
+
+    impl Recorder {
+        fn calls(&self) -> Vec<String> {
+            self.calls.lock().unwrap().clone()
+        }
+
+        fn last_shown_pin(&self) -> u32 {
+            self.calls()
+                .iter()
+                .rev()
+                .find_map(|c| c.strip_prefix("show:").map(|p| p.parse().unwrap()))
+                .expect("a PIN was shown")
+        }
+    }
+
+    impl AtvDelegate for Recorder {
+        fn show_pairing_pin(&self, pin: &str) {
+            self.calls.lock().unwrap().push(format!("show:{pin}"));
+        }
+
+        fn hide_pairing_pin(&self) {
+            self.calls.lock().unwrap().push("hide".into());
+        }
+    }
+
+    struct Phone {
+        id: Vec<u8>,
+        key: SigningKey,
+    }
+
+    impl Phone {
+        fn new(id: &str, seed: u8) -> Self {
+            Self {
+                id: id.as_bytes().to_vec(),
+                key: SigningKey::from_bytes(&[seed; 32]),
+            }
+        }
+
+        fn ltpk(&self) -> [u8; 32] {
+            self.key.verifying_key().to_bytes()
+        }
+    }
+
+    static NEXT_CONN_ID: AtomicU64 = AtomicU64::new(1);
+
+    struct Peer {
+        session: CompanionSession,
+        socket: TcpStream,
+        _server_reader: OwnedReadHalf,
+    }
+
+    impl Peer {
+        async fn connect(pairing: PairingPolicy, delegate: Arc<Recorder>) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let socket = TcpStream::connect(listener.local_addr().unwrap()).await.unwrap();
+            let (server, peer) = listener.accept().await.unwrap();
+            let (reader, writer) = server.into_split();
+            let identity = DeviceIdentity {
+                name: "Test TV".into(),
+                device_id: "02:00:00:00:00:01".into(),
+                mac_bytes: [2, 0, 0, 0, 0, 1],
+                server_identifier: SERVER_IDENTIFIER.into(),
+                unique_id: SERVER_IDENTIFIER.replace('-', ""),
+                private_key: [0x11; 32],
+            };
+            let delegate: Arc<dyn AtvDelegate> = delegate;
+            let session = CompanionSession::new(
+                Arc::new(Mutex::new(writer)),
+                delegate,
+                &identity,
+                1111,
+                pairing,
+                Arc::new(AtomicBool::new(false)),
+                Arc::new(AtomicU8::new(0)),
+                InspectorHub::new(),
+                Arc::new(Mutex::new(DeviceRegistry::new(std::time::Duration::from_secs(60)))),
+                Arc::new(Mutex::new(ActiveConnectionTracker::new())),
+                NEXT_CONN_ID.fetch_add(1, Ordering::SeqCst),
+                peer.ip().to_string(),
+                Arc::new(AtomicBool::new(false)),
+            );
+            Self {
+                session,
+                socket,
+                _server_reader: reader,
+            }
+        }
+
+        /// Hand one auth frame to the session as if it came off the wire.
+        async fn send(&mut self, frame_type: FrameType, seq: u8, entries: &[(u8, &[u8])]) -> Result<()> {
+            let seq = [seq];
+            let mut items = vec![(tags::SEQ_NO, &seq[..])];
+            items.extend_from_slice(entries);
+            let payload = opack::pack(&Value::dict(vec![Value::kv(
+                "_pd",
+                Value::Bytes(tlv::write(&items)),
+            )]));
+            let mut header = vec![frame_type as u8];
+            header.extend_from_slice(&(payload.len() as u32).to_be_bytes()[1..]);
+            self.session.handle_frame(frame_type, &payload, &header).await
+        }
+
+        /// Read the next frame the session wrote and return its pairing TLV.
+        async fn recv(&mut self) -> BTreeMap<u8, Vec<u8>> {
+            let mut header = [0u8; 4];
+            self.socket.read_exact(&mut header).await.unwrap();
+            let length = u32::from_be_bytes([0, header[1], header[2], header[3]]) as usize;
+            let mut payload = vec![0u8; length];
+            self.socket.read_exact(&mut payload).await.unwrap();
+            let (value, _) = opack::unpack(&payload).unwrap();
+            tlv::read(value.get("_pd").and_then(Value::as_bytes).unwrap())
+        }
+
+        /// Pair-setup M1: returns M2.
+        async fn m1(&mut self) -> BTreeMap<u8, Vec<u8>> {
+            self.send(FrameType::PsStart, 1, &[(tags::METHOD, &[0])]).await.unwrap();
+            self.recv().await
+        }
+
+        /// Pair-setup M1/M2: returns the PIN shown on screen, salt and B.
+        async fn setup_m1(&mut self, delegate: &Recorder) -> (u32, Vec<u8>, Vec<u8>) {
+            let m2 = self.m1().await;
+            assert!(!m2.contains_key(&tags::ERROR), "M2 {m2:?}");
+            (delegate.last_shown_pin(), m2[&tags::SALT].clone(), m2[&tags::PUBLIC_KEY].clone())
+        }
+
+        /// Pair-setup M3/M4 with `pin`: returns M4 and the client's SRP key.
+        async fn setup_m3(&mut self, pin: u32, salt: &[u8], b: &[u8]) -> (BTreeMap<u8, Vec<u8>>, Vec<u8>) {
+            let (a, proof, key) = srp_client(pin, salt, b);
+            self.send(FrameType::PsNext, 3, &[(tags::PUBLIC_KEY, &a), (tags::PROOF, &proof)])
+                .await
+                .unwrap();
+            (self.recv().await, key)
+        }
+
+        /// Pair-setup M5/M6: presents `phone`'s identifier and LTPK, signed by `signer`.
+        async fn setup_m5(&mut self, phone: &Phone, signer: &SigningKey, srp_key: &[u8]) -> (Result<()>, BTreeMap<u8, Vec<u8>>) {
+            let ltpk = phone.ltpk();
+            let device_x = hkdf_expand(
+                "Pair-Setup-Controller-Sign-Salt",
+                "Pair-Setup-Controller-Sign-Info",
+                srp_key,
+            );
+            let signature = signer.sign(&[&device_x[..], &phone.id[..], &ltpk[..]].concat());
+            let sub_tlv = tlv::write(&[
+                (tags::IDENTIFIER, &phone.id),
+                (tags::PUBLIC_KEY, &ltpk),
+                (tags::SIGNATURE, &signature.to_bytes()),
+            ]);
+            let key = hkdf_expand("Pair-Setup-Encrypt-Salt", "Pair-Setup-Encrypt-Info", srp_key);
+            let encrypted = CompanionCipher::new(&key, &key, 8)
+                .unwrap()
+                .encrypt(&sub_tlv, None, Some(b"PS-Msg05"))
+                .unwrap();
+            let result = self.send(FrameType::PsNext, 5, &[(tags::ENCRYPTED_DATA, &encrypted)]).await;
+            (result, self.recv().await)
+        }
+
+        /// Full pair-verify as `id`, signing M3 with `signer`: returns the
+        /// session's verdict and M4.
+        async fn verify(&mut self, id: &[u8], signer: &SigningKey) -> (Result<()>, BTreeMap<u8, Vec<u8>>) {
+            let secret = StaticSecret::from([0x33; 32]);
+            let client_pub = X25519PublicKey::from(&secret).to_bytes();
+            self.send(FrameType::PvStart, 1, &[(tags::PUBLIC_KEY, &client_pub)]).await.unwrap();
+            let m2 = self.recv().await;
+            let server_pub: [u8; 32] = m2[&tags::PUBLIC_KEY].as_slice().try_into().unwrap();
+            let shared = secret.diffie_hellman(&X25519PublicKey::from(server_pub));
+            let key = hkdf_expand(
+                "Pair-Verify-Encrypt-Salt",
+                "Pair-Verify-Encrypt-Info",
+                shared.as_bytes(),
+            );
+            let signature = signer.sign(&[&client_pub[..], id, &server_pub[..]].concat());
+            let sub_tlv = tlv::write(&[(tags::IDENTIFIER, id), (tags::SIGNATURE, &signature.to_bytes())]);
+            let encrypted = CompanionCipher::new(&key, &key, 8)
+                .unwrap()
+                .encrypt(&sub_tlv, None, Some(b"PV-Msg03"))
+                .unwrap();
+            let result = self.send(FrameType::PvNext, 3, &[(tags::ENCRYPTED_DATA, &encrypted)]).await;
+            (result, self.recv().await)
+        }
+    }
+
+    fn sha512(parts: &[&[u8]]) -> Vec<u8> {
+        let mut hasher = Sha512::new();
+        for part in parts {
+            hasher.update(part);
+        }
+        hasher.finalize().to_vec()
+    }
+
+    fn pad(value: &BigUint, n: &BigUint) -> Vec<u8> {
+        let bytes = int_to_bytes(value);
+        [vec![0; int_to_bytes(n).len() - bytes.len()], bytes].concat()
+    }
+
+    /// SRP-6a client (srptools / pyatv): returns A, the proof M1 and the session key K.
+    fn srp_client(pin: u32, salt: &[u8], server_public: &[u8]) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+        let n = BigUint::parse_bytes(PRIME_3072_HEX.as_bytes(), 16).unwrap();
+        let g = BigUint::from(5u32);
+        let k = BigUint::from_bytes_be(&sha512(&[&int_to_bytes(&n), &pad(&g, &n)]));
+        let inner = sha512(&[format!("Pair-Setup:{pin}").as_bytes()]);
+        let x = BigUint::from_bytes_be(&sha512(&[salt, &inner]));
+        let a = BigUint::from_bytes_be(&[0x42; 32]);
+        let a_pub = g.modpow(&a, &n);
+        let b_pub = BigUint::from_bytes_be(server_public);
+        let u = BigUint::from_bytes_be(&sha512(&[&pad(&a_pub, &n), &pad(&b_pub, &n)]));
+        let base = (&b_pub + &n - (&k * g.modpow(&x, &n)) % &n) % &n;
+        let premaster = base.modpow(&(&a + &u * &x), &n);
+        let key = sha512(&[&int_to_bytes(&premaster)]);
+        let hn = BigUint::from_bytes_be(&sha512(&[&int_to_bytes(&n)]));
+        let hg = BigUint::from_bytes_be(&sha512(&[&int_to_bytes(&g)]));
+        let proof = sha512(&[
+            &int_to_bytes(&(hn ^ hg)),
+            &sha512(&[b"Pair-Setup"]),
+            salt,
+            &int_to_bytes(&a_pub),
+            &int_to_bytes(&b_pub),
+            &key,
+        ]);
+        (int_to_bytes(&a_pub), proof, key)
+    }
+
+    fn enforcing(clients: PairedClients) -> PairingPolicy {
+        PairingPolicy::new(true, true, clients)
+    }
+
+    fn temp_dir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "atv-session-{}-{}",
+            std::process::id(),
+            rand::random::<u32>()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[tokio::test]
+    async fn stored_client_is_accepted() {
+        let dir = temp_dir();
+        let delegate = Arc::new(Recorder::default());
+        let phone = Phone::new("phone-1", 1);
+
+        let mut peer = Peer::connect(enforcing(PairedClients::open(Some(&dir))), delegate.clone()).await;
+        let (pin, salt, b) = peer.setup_m1(&delegate).await;
+        let (m4, srp_key) = peer.setup_m3(pin, &salt, &b).await;
+        assert!(m4.contains_key(&tags::PROOF), "M4 {m4:?}");
+        let (result, m6) = peer.setup_m5(&phone, &phone.key, &srp_key).await;
+        result.unwrap();
+        assert!(m6.contains_key(&tags::ENCRYPTED_DATA) && !m6.contains_key(&tags::ERROR));
+        assert_eq!(delegate.calls(), vec![format!("show:{pin}"), "hide".to_string()]);
+        drop(peer);
+
+        // A new server instance reads the pairing back from disk.
+        let mut peer = Peer::connect(enforcing(PairedClients::open(Some(&dir))), delegate.clone()).await;
+        let (result, m4) = peer.verify(&phone.id, &phone.key).await;
+        result.unwrap();
+        assert!(!m4.contains_key(&tags::ERROR), "M4 {m4:?}");
+        assert!(peer.session.cipher.is_some(), "control channel enabled");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn unknown_identifier_is_refused() {
+        let paired = Phone::new("phone-1", 1);
+        let stranger = Phone::new("phone-2", 2);
+        let mut clients = PairedClients::open(None);
+        clients.insert(&paired.id, paired.ltpk()).unwrap();
+
+        let mut peer = Peer::connect(enforcing(clients), Arc::new(Recorder::default())).await;
+        let (result, m4) = peer.verify(&stranger.id, &stranger.key).await;
+        assert!(result.is_err(), "the connection must close");
+        assert_eq!(m4.get(&tags::ERROR), Some(&vec![0x02]), "kTLVError_Authentication");
+        assert!(peer.session.cipher.is_none(), "no control channel");
+    }
+
+    #[tokio::test]
+    async fn bad_signature_is_refused() {
+        let paired = Phone::new("phone-1", 1);
+        let impostor = SigningKey::from_bytes(&[2; 32]);
+        let mut clients = PairedClients::open(None);
+        clients.insert(&paired.id, paired.ltpk()).unwrap();
+        let pairing = enforcing(clients);
+        let delegate = Arc::new(Recorder::default());
+
+        // Pair-verify: a paired identifier, signed with another key.
+        let mut peer = Peer::connect(pairing.clone(), delegate.clone()).await;
+        let (result, m4) = peer.verify(&paired.id, &impostor).await;
+        assert!(result.is_err(), "the connection must close");
+        assert_eq!(m4.get(&tags::ERROR), Some(&vec![0x02]));
+        assert!(peer.session.cipher.is_none());
+
+        // Pair-setup M5: the right PIN, but the LTPK does not sign the request.
+        let newcomer = Phone::new("phone-3", 3);
+        let mut peer = Peer::connect(pairing.clone(), delegate.clone()).await;
+        let (pin, salt, b) = peer.setup_m1(&delegate).await;
+        let (_, srp_key) = peer.setup_m3(pin, &salt, &b).await;
+        let (result, m6) = peer.setup_m5(&newcomer, &impostor, &srp_key).await;
+        assert!(result.is_err());
+        assert_eq!(m6.get(&tags::ERROR), Some(&vec![0x02]));
+        assert_eq!(pairing.clients.lock().unwrap().get(&newcomer.id), None, "not stored");
+        assert_eq!(delegate.calls().last().map(String::as_str), Some("hide"));
+    }
+
+    #[tokio::test]
+    async fn every_attempt_gets_a_new_pin() {
+        let delegate = Arc::new(Recorder::default());
+        let mut peer = Peer::connect(enforcing(PairedClients::open(None)), delegate.clone()).await;
+
+        let (first, _, _) = peer.setup_m1(&delegate).await;
+        let (second, salt, b) = loop {
+            let attempt = peer.setup_m1(&delegate).await;
+            if attempt.0 != first {
+                break attempt;
+            }
+        };
+        // The previous attempt's PIN does not pair against the new verifier.
+        let (m4, _) = peer.setup_m3(first, &salt, &b).await;
+        assert_eq!(m4.get(&tags::ERROR), Some(&vec![0x02]));
+        assert_eq!(delegate.calls().last().map(String::as_str), Some("hide"));
+
+        // After a failure the PIN is gone: M3 needs a new M1 first.
+        let (m4, _) = peer.setup_m3(second, &salt, &b).await;
+        assert_eq!(m4.get(&tags::ERROR), Some(&vec![0x02]));
+
+        let (third, salt, b) = peer.setup_m1(&delegate).await;
+        let (m4, _) = peer.setup_m3(third, &salt, &b).await;
+        assert!(m4.contains_key(&tags::PROOF), "M4 {m4:?}");
+
+        // Closing the connection mid-pairing hides the PIN.
+        drop(peer);
+        assert_eq!(delegate.calls().last().map(String::as_str), Some("hide"));
+        for call in delegate.calls() {
+            if let Some(pin) = call.strip_prefix("show:") {
+                assert!(pin.len() == 4 && (1000..=9999).contains(&pin.parse::<u32>().unwrap()));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn without_enforcement_any_client_is_admitted() {
+        let delegate = Arc::new(Recorder::default());
+        let pairing = PairingPolicy::new(false, false, PairedClients::open(None));
+        let mut peer = Peer::connect(pairing, delegate.clone()).await;
+        let stranger = Phone::new("phone-2", 2);
+        let (result, m4) = peer.verify(&stranger.id, &stranger.key).await;
+        result.unwrap();
+        assert!(!m4.contains_key(&tags::ERROR));
+        assert!(peer.session.cipher.is_some());
+
+        // The fixed PIN still pairs, and nothing is shown.
+        peer.send(FrameType::PsStart, 1, &[(tags::METHOD, &[0])]).await.unwrap();
+        let m2 = peer.recv().await;
+        let (m4, _) = peer.setup_m3(1111, &m2[&tags::SALT], &m2[&tags::PUBLIC_KEY]).await;
+        assert!(m4.contains_key(&tags::PROOF), "M4 {m4:?}");
+        assert!(delegate.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn second_pairing_is_busy_while_a_code_is_shown() {
+        let delegate = Arc::new(Recorder::default());
+        let pairing = enforcing(PairedClients::open(None));
+        let mut first = Peer::connect(pairing.clone(), delegate.clone()).await;
+        let mut second = Peer::connect(pairing.clone(), delegate.clone()).await;
+
+        let (pin, _, _) = first.setup_m1(&delegate).await;
+        let m2 = second.m1().await;
+        assert_eq!(m2.get(&tags::ERROR), Some(&vec![0x07]), "kTLVError_Busy");
+        assert!(!m2.contains_key(&tags::SALT));
+        assert_eq!(delegate.calls(), vec![format!("show:{pin}")], "the first code stays up");
+
+        // The phone that holds the screen may restart its own attempt.
+        let (again, _, _) = first.setup_m1(&delegate).await;
+        assert_eq!(delegate.calls().last(), Some(&format!("show:{again}")));
+    }
+
+    #[tokio::test]
+    async fn screen_is_released_after_success_failure_and_close() {
+        let delegate = Arc::new(Recorder::default());
+        let pairing = enforcing(PairedClients::open(None));
+        let phone = Phone::new("phone-1", 1);
+        let mut a = Peer::connect(pairing.clone(), delegate.clone()).await;
+        let mut b = Peer::connect(pairing.clone(), delegate.clone()).await;
+
+        // Success: A pairs, then B may start.
+        let (pin, salt, srp_b) = a.setup_m1(&delegate).await;
+        assert_eq!(b.m1().await.get(&tags::ERROR), Some(&vec![0x07]));
+        let (_, srp_key) = a.setup_m3(pin, &salt, &srp_b).await;
+        a.setup_m5(&phone, &phone.key, &srp_key).await.0.unwrap();
+        let (b_pin, salt, srp_b) = b.setup_m1(&delegate).await;
+
+        // Failure: B types a wrong code, then A may start.
+        assert_eq!(a.m1().await.get(&tags::ERROR), Some(&vec![0x07]));
+        let wrong = if b_pin == 9999 { 1000 } else { b_pin + 1 };
+        let (m4, _) = b.setup_m3(wrong, &salt, &srp_b).await;
+        assert_eq!(m4.get(&tags::ERROR), Some(&vec![0x02]));
+        a.setup_m1(&delegate).await;
+
+        // Close: A's connection drops mid-pairing, then B may start.
+        assert_eq!(b.m1().await.get(&tags::ERROR), Some(&vec![0x07]));
+        drop(a);
+        assert_eq!(delegate.calls().last().map(String::as_str), Some("hide"));
+        b.setup_m1(&delegate).await;
+    }
+}

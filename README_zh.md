@@ -53,8 +53,8 @@
 
 ### 功能限制
 
-- **Android TV 必须开启网络 ADB。** Android 禁止普通应用向其它 App 注入方向键 / 确认键，因此按键注入依赖本地 ADB 通道；无障碍服务仅作兜底，并负责全局返回 / 主页动作。完整步骤见 [Android TV 前置要求](#android-tv)。
-- **配对使用固定 PIN。** iPhone 提示输入配对码时，输入 **`1111`** 即可。
+- **Android TV 必须开启网络 ADB。** Android 禁止普通应用向其它 App 注入方向键 / 确认键，因此按键注入依赖本地 ADB 通道；无障碍服务作为按键兜底，负责全局返回 / 主页动作，并在屏幕上显示配对码。完整步骤见 [Android TV 前置要求](#android-tv)。
+- **配对码。** 在 Android TV 上，每次配对都会在电视屏幕上显示一个新的 4 位随机配对码，只有输入过该配对码的 iPhone 才能控制电视。配对码由无障碍服务叠加显示在当前应用之上；未开启无障碍服务时，配对码只会出现在应用的通知和主界面中。Mac 和 Windows 应用使用固定 PIN **`1111`**，并接受任何 iPhone。命令行工具（`atv-cli`）默认也是如此，除非传入 `--random-pin`（每次配对打印新的配对码）、`--require-pairing`（只接受已配对的 iPhone；请与 `--no-ui` 一起使用，因为调试网页界面无需配对即可按键）和 `--pairing-dir <DIR>`（在该目录中保存已配对的 iPhone，重启后仍然有效）。
 - macOS 版使用自签名证书签名，首次启动 Gatekeeper 会告警，见 [macOS 前置要求](#macos)。
 
 ---
@@ -67,7 +67,7 @@
 4. **打开控制中心找到遥控器**：
    - 屏幕右上角向下滑动呼出**控制中心**，点击红圈标记的 **Apple TV 遥控器** 图标。
    - *(若控制中心未显示该图标，去 iOS **设置 → 控制中心**，在「更多控制」中添加「Apple TV 遥控器」即可)*。
-   - 顶部选择你的目标设备，提示配对码时输入 **`1111`** 即可开始使用。
+   - 顶部选择你的目标设备，提示配对码时输入配对码即可开始使用：Android TV 输入电视屏幕上显示的配对码，Mac 和 Windows 输入 **`1111`**。
 
 ### macOS
 
@@ -94,9 +94,9 @@ xattr -dr com.apple.quarantine /Applications/AppleTVRemote.app
 1. **开启开发者选项**：系统设置 → 关于 → 连续点击**内部版本号** 7 次。
 2. **开启 USB 调试与网络调试**：系统设置 → 系统 → 开发者选项。
 3. 安装并启动 APK。首次运行会弹出 Android 安全对话框——用电视遥控器勾选**「始终允许来自此计算机」**并点**允许**。（点拒绝会导致 `Unauthorized`，遥控失效。）
-4. *（可选兜底）*开启无障碍服务：主界面 → **ACCESSIBILITY SETTINGS** → 找到 **Apple TV Remote Receiver** → 打开。
+4. 开启无障碍服务：主界面 → **ACCESSIBILITY SETTINGS** → 找到 **Apple TV Remote Receiver** → 打开。它会把配对码叠加显示在当前画面之上；未开启时，请打开应用查看配对码（应用通知中也会显示）。
 
-> **为什么需要 ADB？** Android 禁止普通应用向第三方影视 App 注入全局方向键 / 确认键。内置的 `dadb` 驱动连接 `127.0.0.1:5555`，直接派发 Linux keycode（本地回环实测 <8 ms）。无障碍服务无法独立完成这件事，只能作兜底与全局返回 / 主页动作。
+> **为什么需要 ADB？** Android 禁止普通应用向第三方影视 App 注入全局方向键 / 确认键。内置的 `dadb` 驱动连接 `127.0.0.1:5555`，直接派发 Linux keycode（本地回环实测 <8 ms）。无障碍服务无法独立完成这件事，只能作兜底、执行全局返回 / 主页动作并显示配对码。
 
 ---
 
@@ -155,7 +155,7 @@ python3 scripts/bridge_emulator.py logs -f      # 跟踪日志
 python3 scripts/bridge_emulator.py stop         # 停止
 ```
 
-随后在 iPhone → 控制中心 → Apple TV 遥控器 → 选择 **`Android TV Emulator`** → 输入 PIN `1111`。
+随后在 iPhone → 控制中心 → Apple TV 遥控器 → 选择 **`Android TV Emulator`** → 输入模拟器屏幕上显示的配对码。
 
 桥接通过 `adb forward` 透传 `49152/49153/49154` 端口，并把 Bonjour 记录（`_mediaremotetv._tcp`、`_companion-link._tcp`）代理广播到物理 Wi-Fi，因此 iPhone 连接宿主机后会被透明路由到模拟器。
 

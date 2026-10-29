@@ -130,6 +130,14 @@ pub trait AtvDelegate: Send + Sync + 'static {
     /// Lifecycle/state event with a human-readable detail string.
     fn on_event(&self, _kind: EventKind, _detail: &str) {}
 
+    /// Random-PIN pairing: a phone started pair-setup; show `pin` (four
+    /// digits) to the user until `hide_pairing_pin` is called.
+    fn show_pairing_pin(&self, _pin: &str) {}
+
+    /// The pairing attempt that showed a PIN ended: it completed, failed, or
+    /// its connection closed.
+    fn hide_pairing_pin(&self) {}
+
     /// Called when the input mode changes (trackpad mode: Direction, Mouse, or Idle).
     fn on_trackpad_mode_changed(&self, mode: TrackpadMode) {
         self.on_mode_changed(mode.is_mouse());

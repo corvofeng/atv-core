@@ -53,8 +53,8 @@ Prefer to build it yourself? See [Build from source](#build-from-source).
 
 ### Limitations
 
-- **Android TV needs network ADB.** Android blocks ordinary apps from injecting D-pad / Select keys into other apps, so key injection relies on a local ADB channel. The Accessibility Service is only a fallback and handles global actions (Back / Home). Full setup: [Android TV prerequisites](#android-tv).
-- **Pairing uses a fixed PIN.** When the iPhone asks for a pairing code, enter **`1111`**.
+- **Android TV needs network ADB.** Android blocks ordinary apps from injecting D-pad / Select keys into other apps, so key injection relies on a local ADB channel. The Accessibility Service is a fallback for keys, handles global actions (Back / Home) and shows the pairing code on screen. Full setup: [Android TV prerequisites](#android-tv).
+- **Pairing code.** On Android TV, every pairing attempt shows a new random 4-digit code on the TV screen, and only iPhones that entered such a code can control the TV. The code is drawn over the current app by the Accessibility Service; without it, the code appears only in the app's notification and on its main screen. The Mac and Windows apps use the fixed PIN **`1111`** and accept any iPhone. The CLI (`atv-cli`) does the same unless you pass `--random-pin` (print a new code for every attempt), `--require-pairing` (admit only paired iPhones; use it with `--no-ui`, because the debug web UI presses buttons without pairing) and `--pairing-dir <DIR>` (keep the paired iPhones there across restarts).
 - The macOS app is signed with a self-signed certificate, so Gatekeeper will warn on first launch. See [macOS prerequisites](#macos).
 
 ---
@@ -67,7 +67,7 @@ Prefer to build it yourself? See [Build from source](#build-from-source).
 4. **Open Control Center to find the Remote**:
    - Swipe down from the top-right corner of your screen to open **Control Center**, then tap the circled **Apple TV Remote** icon.
    - *(If the icon is not in Control Center, go to iOS **Settings → Control Center** and add "Apple TV Remote" from "More Controls")*.
-   - Select your target device from the top dropdown, and enter PIN **`1111`** when prompted.
+   - Select your target device from the top dropdown and enter the pairing code when prompted: the code shown on the TV screen for Android TV, **`1111`** for Mac and Windows.
 
 ### macOS
 
@@ -94,9 +94,9 @@ Download and extract `AppleTVRemote-windows-x86_64.zip` (or run `AppleTVRemote-w
 1. **Enable developer options**: Settings → About → tap **Build Number** 7 times.
 2. **Enable USB Debugging and Network Debugging**: Settings → System → Developer Options.
 3. Install and launch the APK. On first run, an Android security dialog appears — with the TV remote, check **"Always allow from this computer"** and tap **Allow**. (Rejecting it causes an `Unauthorized` error and no input.)
-4. *(Optional fallback)* Enable the Accessibility Service: main dashboard → **ACCESSIBILITY SETTINGS** → find **Apple TV Remote Receiver** → turn it On.
+4. Enable the Accessibility Service: main dashboard → **ACCESSIBILITY SETTINGS** → find **Apple TV Remote Receiver** → turn it On. It shows the pairing code over whatever is on screen; without it, open the app to see the code (it is also in the app's notification).
 
-> **Why ADB?** Android prevents regular apps from injecting global D-pad / Select keys into third-party streaming apps. The bundled `dadb` driver connects to `127.0.0.1:5555` and dispatches Linux keycodes directly (measured <8 ms over local loopback). The Accessibility Service can't do this on its own — it only serves as a fallback and for global Back / Home actions.
+> **Why ADB?** Android prevents regular apps from injecting global D-pad / Select keys into third-party streaming apps. The bundled `dadb` driver connects to `127.0.0.1:5555` and dispatches Linux keycodes directly (measured <8 ms over local loopback). The Accessibility Service can't do this on its own — it only serves as a fallback, for global Back / Home actions and for showing the pairing code.
 
 ---
 
@@ -155,7 +155,7 @@ python3 scripts/bridge_emulator.py logs -f      # tail logs
 python3 scripts/bridge_emulator.py stop         # stop daemon
 ```
 
-Then pair from iPhone → Control Center → Apple TV Remote → **`Android TV Emulator`** → PIN `1111`.
+Then pair from iPhone → Control Center → Apple TV Remote → **`Android TV Emulator`** → enter the code shown on the emulator screen.
 
 The bridge forwards ports `49152/49153/49154` via `adb forward` and proxies the Bonjour records (`_mediaremotetv._tcp`, `_companion-link._tcp`) onto the physical Wi-Fi, so the iPhone connects to the host and is transparently routed to the emulator.
 

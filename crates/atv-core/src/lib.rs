@@ -16,6 +16,7 @@ pub mod error;
 pub mod identity;
 pub mod inspector;
 pub mod opack;
+pub mod pairing;
 pub mod registry;
 pub mod server;
 pub mod session;

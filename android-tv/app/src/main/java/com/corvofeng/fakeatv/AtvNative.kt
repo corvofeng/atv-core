@@ -14,6 +14,8 @@ object AtvNative {
         fun onTouch(dx: Double, dy: Double, phase: Int)
         fun onAudio(volume: Double, muted: Boolean)
         fun onEvent(kind: String, detail: String)
+        fun onShowPin(pin: String)
+        fun onHidePin()
     }
 
     external fun nativeStartServer(
@@ -22,6 +24,7 @@ object AtvNative {
         deviceId: String,
         serverId: String,
         localIp: String,
+        filesDir: String,
         callback: Callback
     ): Boolean
 

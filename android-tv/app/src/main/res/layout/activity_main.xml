@@ -47,7 +47,7 @@
                     android:id="@+id/tvPin"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Pairing PIN: 1111"
+                    android:text="The pairing code appears on screen when you pair"
                     android:textColor="#4CAF50"
                     android:textSize="24sp"
                     android:textStyle="bold" />

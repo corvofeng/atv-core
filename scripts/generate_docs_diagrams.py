@@ -344,7 +344,7 @@ svg_emulator_flow = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000
     <text x="16" y="65" class="desc">iPhone 下拉控制中心</text>
     <text x="16" y="83" class="desc">自动显示模拟器设备项</text>
     <rect x="14" y="105" width="157" height="36" rx="6" fill="#1e293b"/>
-    <text x="24" y="127" class="label" fill="#93c5fd">配对 PIN: 1111</text>
+    <text x="24" y="127" class="label" fill="#93c5fd">配对码显示在屏幕上</text>
     <rect x="14" y="150" width="157" height="52" rx="6" fill="#090d16" stroke="#1e293b"/>
     <text x="24" y="170" class="desc" font-size="11" fill="#34d399">● 加密会话建立成功</text>
     <text x="24" y="188" class="desc" font-size="11">直连模拟器流畅操控</text>
