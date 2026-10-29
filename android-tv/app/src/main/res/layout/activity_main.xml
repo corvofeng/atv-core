@@ -1,191 +1,342 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Main screen, sized for the standard 960x540dp TV canvas viewed from the couch.
+  Left card: status and pairing (what the iPhone sees, how to pair, accessibility state, actions).
+  Right card: settings as rows with their current value under the title. Technical details and the
+  event log open from the last row, so nothing on this screen can swallow the remote's focus.
+  Padding keeps everything inside the TV overscan-safe area (5% of the screen); on a taller canvas
+  the content is centered vertically. The root scroll view is only a safety net for larger fonts;
+  focus stays on the controls because they are focusable.
+-->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true"
-    android:background="#121212">
+    android:background="@color/screen_bg"
+    android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
+        android:gravity="center_vertical"
         android:orientation="vertical"
-        android:padding="28dp">
+        android:paddingStart="48dp"
+        android:paddingTop="27dp"
+        android:paddingEnd="48dp"
+        android:paddingBottom="27dp">
 
-        <TextView
-            android:id="@+id/tvTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Apple TV Remote Receiver"
-            android:textColor="#FFFFFF"
-            android:textSize="28sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/tvSubtitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="Control your Android TV directly using an iPhone / iPad Control Center Remote"
-            android:textColor="#B0BEC5"
-            android:textSize="15sp" />
-
+        <!-- Header: app name, what it does, server state -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:background="#1E1E1E"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/app_name"
+                    android:textColor="@color/text_primary"
+                    android:textSize="26sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvSubtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/main_subtitle"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="15sp" />
+
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="24dp"
+                android:background="@drawable/bg_pill"
+                android:paddingStart="18dp"
+                android:paddingTop="8dp"
+                android:paddingEnd="18dp"
+                android:paddingBottom="8dp"
+                android:text="@string/status_stopped"
+                android:textColor="@color/status_error"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:baselineAligned="false"
+            android:orientation="horizontal">
+
+            <!-- Status and pairing -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1.35"
+                android:background="@drawable/bg_card"
+                android:clipChildren="false"
+                android:clipToPadding="false"
                 android:orientation="vertical"
                 android:padding="20dp">
 
+                <!-- Sentence case: all caps would turn "iPhone" into "IPHONE" -->
                 <TextView
-                    android:id="@+id/tvPin"
-                    android:layout_width="wrap_content"
+                    style="@style/FakeAtv.SectionLabel"
+                    android:letterSpacing="0"
+                    android:text="@string/connect_name_label"
+                    android:textAllCaps="false" />
+
+                <TextView
+                    android:id="@+id/tvDeviceName"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Pairing PIN: 1111"
-                    android:textColor="#4CAF50"
-                    android:textSize="24sp"
+                    android:layout_marginTop="2dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/text_primary"
+                    android:textSize="30sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/tvIp"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="IP Address: Loading..."
-                    android:textColor="#ECEFF1"
+                    android:textColor="@color/text_secondary"
                     android:textSize="16sp" />
 
-                <TextView
-                    android:id="@+id/tvStatus"
-                    android:layout_width="wrap_content"
+                <!-- Pairing area. Its minimum height fits the code box, so the centered screen does not
+                     jump when the steps, the "server stopped" note and the code replace each other. -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="Status: Initializing..."
-                    android:textColor="#4CAF50"
-                    android:textSize="16sp" />
+                    android:layout_marginTop="14dp"
+                    android:minHeight="112dp"
+                    android:orientation="vertical">
+
+                    <!-- How to pair; replaced by the code itself while a code is shown here -->
+                    <LinearLayout
+                        android:id="@+id/pairSteps"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/pair_title"
+                            android:textColor="@color/text_primary"
+                            android:textSize="17sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tvPairSteps"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:lineSpacingExtra="3dp"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp" />
+
+                    </LinearLayout>
+
+                    <!-- Pairing code shown in the app when the accessibility overlay cannot show it -->
+                    <LinearLayout
+                        android:id="@+id/pairCodeBox"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_code"
+                        android:orientation="vertical"
+                        android:paddingStart="20dp"
+                        android:paddingTop="8dp"
+                        android:paddingEnd="20dp"
+                        android:paddingBottom="10dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/pair_code_label"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:id="@+id/tvPairCode"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:letterSpacing="0.2"
+                            android:textColor="@color/status_ok"
+                            android:textSize="40sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/pair_code_hint"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
 
                 <TextView
                     android:id="@+id/tvAccessibility"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:text="Accessibility Service: Checking..."
-                    android:textColor="#ECEFF1"
-                    android:textSize="15sp" />
+                    android:layout_marginTop="16dp"
+                    android:textColor="@color/status_warn"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
 
                 <TextView
-                    android:id="@+id/tvMenuBinding"
-                    android:layout_width="wrap_content"
+                    android:id="@+id/tvAccessibilityNote"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Menu 键映射: 无 (默认)"
-                    android:textColor="#ECEFF1"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/text_secondary"
                     android:textSize="14sp" />
-
-                <TextView
-                    android:id="@+id/tvInjectionMode"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="按键注入: 自动自适应 (硬件 -> ADB -> 无障碍)"
-                    android:textColor="#81D4FA"
-                    android:textSize="14sp" />
-
-                <TextView
-                    android:id="@+id/tvDriverStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="通道检测: 硬件驱动[--] | 本地ADB[--] | 无障碍[--]"
-                    android:textColor="#ECEFF1"
-                    android:textSize="13sp" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
+                    android:layout_marginTop="12dp"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
                     android:orientation="horizontal">
+
+                    <!-- First action: initial focus lands here -->
+                    <Button
+                        android:id="@+id/btnAccessibility"
+                        style="@style/FakeAtv.Button"
+                        android:focusedByDefault="true"
+                        android:nextFocusUp="@id/btnAccessibility"
+                        android:nextFocusDown="@id/btnAccessibility"
+                        android:text="@string/btn_a11y_settings" />
 
                     <Button
                         android:id="@+id/btnToggle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Stop Server"
-                        android:focusable="true" />
-
-                    <Button
-                        android:id="@+id/btnAccessibility"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="14dp"
-                        android:text="Accessibility Settings"
-                        android:focusable="true" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
-                    android:orientation="horizontal">
-
-                    <Button
-                        android:id="@+id/btnInjectionMode"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="切换按键注入模式"
-                        android:focusable="true" />
-
-                    <Button
-                        android:id="@+id/btnMenuBinding"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="14dp"
-                        android:text="设置 Menu 键"
-                        android:focusable="true" />
+                        style="@style/FakeAtv.Button"
+                        android:layout_marginStart="16dp"
+                        android:nextFocusUp="@id/btnToggle"
+                        android:nextFocusDown="@id/btnToggle"
+                        android:text="@string/btn_stop_server" />
 
                 </LinearLayout>
 
             </LinearLayout>
 
+            <!-- Settings, each row shows its current value under the title -->
             <LinearLayout
                 android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_marginStart="20dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="24dp"
                 android:layout_weight="1"
-                android:background="#1E1E1E"
+                android:background="@drawable/bg_card"
+                android:clipChildren="false"
+                android:clipToPadding="false"
                 android:orientation="vertical"
                 android:padding="20dp">
 
                 <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Live Event Log"
-                    android:textColor="#90CAF9"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
+                    style="@style/FakeAtv.SectionLabel"
+                    android:layout_marginBottom="4dp"
+                    android:text="@string/settings_title" />
 
-                <ScrollView
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:layout_marginTop="10dp">
+                <LinearLayout
+                    android:id="@+id/rowModeToggle"
+                    style="@style/FakeAtv.Row">
 
-                    <TextView
-                        android:id="@+id/tvLog"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="monospace"
-                        android:text="Waiting for Apple TV Remote connection..."
-                        android:textColor="#CFD8DC"
-                        android:textSize="13sp" />
+                    <LinearLayout style="@style/FakeAtv.RowText">
 
-                </ScrollView>
+                        <TextView
+                            style="@style/FakeAtv.RowTitle"
+                            android:text="@string/setting_cursor_toggle" />
+
+                        <TextView
+                            android:id="@+id/tvModeToggle"
+                            style="@style/FakeAtv.RowValue" />
+
+                    </LinearLayout>
+
+                    <TextView style="@style/FakeAtv.RowChevron" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/rowMenuBinding"
+                    style="@style/FakeAtv.Row">
+
+                    <LinearLayout style="@style/FakeAtv.RowText">
+
+                        <TextView
+                            style="@style/FakeAtv.RowTitle"
+                            android:text="@string/setting_menu_binding" />
+
+                        <TextView
+                            android:id="@+id/tvMenuBinding"
+                            style="@style/FakeAtv.RowValue" />
+
+                    </LinearLayout>
+
+                    <TextView style="@style/FakeAtv.RowChevron" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/rowInjectionMode"
+                    style="@style/FakeAtv.Row">
+
+                    <LinearLayout style="@style/FakeAtv.RowText">
+
+                        <TextView
+                            style="@style/FakeAtv.RowTitle"
+                            android:text="@string/setting_injection_mode" />
+
+                        <TextView
+                            android:id="@+id/tvInjectionMode"
+                            style="@style/FakeAtv.RowValue" />
+
+                    </LinearLayout>
+
+                    <TextView style="@style/FakeAtv.RowChevron" />
+
+                </LinearLayout>
+
+                <!-- Channels, device ID and the live event log, in a dialog -->
+                <LinearLayout
+                    android:id="@+id/rowDetails"
+                    style="@style/FakeAtv.Row"
+                    android:nextFocusDown="@id/rowDetails">
+
+                    <LinearLayout style="@style/FakeAtv.RowText">
+
+                        <TextView
+                            style="@style/FakeAtv.RowTitle"
+                            android:text="@string/setting_details" />
+
+                        <TextView
+                            style="@style/FakeAtv.RowValue"
+                            android:text="@string/details_summary" />
+
+                    </LinearLayout>
+
+                    <TextView style="@style/FakeAtv.RowChevron" />
+
+                </LinearLayout>
 
             </LinearLayout>
 

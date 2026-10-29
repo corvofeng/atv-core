@@ -1,8 +1,114 @@
 <resources>
     <style name="Theme.FakeAtv" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:windowBackground">#121212</item>
+        <item name="android:windowBackground">@color/screen_bg</item>
         <item name="colorPrimary">#4CAF50</item>
         <item name="colorPrimaryDark">#388E3C</item>
         <item name="colorAccent">#81C784</item>
+        <item name="alertDialogTheme">@style/ThemeOverlay.FakeAtv.Dialog</item>
+    </style>
+
+    <!-- Choice dialogs: stronger focus highlight on the Cancel button than the default ripple. -->
+    <style name="ThemeOverlay.FakeAtv.Dialog" parent="ThemeOverlay.AppCompat.Dialog.Alert">
+        <item name="colorAccent">@color/status_ok</item>
+        <item name="colorControlHighlight">@color/dialog_focus</item>
+    </style>
+
+    <!-- Root of the main screen styles below (dot names inherit from it) -->
+    <style name="FakeAtv" />
+
+    <!-- Small caps label above a card section -->
+    <style name="FakeAtv.SectionLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/text_tertiary</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.08</item>
+    </style>
+
+    <!-- Action button: pill with a light focus fill and a slight zoom -->
+    <style name="FakeAtv.Button">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:paddingStart">24dp</item>
+        <item name="android:paddingEnd">24dp</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">10dp</item>
+        <item name="android:background">@drawable/bg_button</item>
+        <item name="android:stateListAnimator">@animator/focus_scale</item>
+        <item name="android:textColor">@color/fg_primary</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <!-- Settings row: the whole row is one focusable control showing its current value -->
+    <style name="FakeAtv.Row">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">8dp</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">18dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:background">@drawable/bg_row</item>
+        <item name="android:stateListAnimator">@animator/focus_scale</item>
+        <item name="android:focusable">true</item>
+        <item name="android:clickable">true</item>
+    </style>
+
+    <!-- Title with the current value under it, so a long value is never cut off -->
+    <style name="FakeAtv.RowText">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:duplicateParentState">true</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="FakeAtv.RowTitle">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:duplicateParentState">true</item>
+        <item name="android:textColor">@color/fg_primary</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="FakeAtv.RowValue">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">1dp</item>
+        <item name="android:duplicateParentState">true</item>
+        <item name="android:textColor">@color/fg_secondary</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <style name="FakeAtv.RowChevron">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">10dp</item>
+        <!-- The glyph sits low in its line box; lift it to the text's optical center -->
+        <item name="android:paddingBottom">4dp</item>
+        <item name="android:duplicateParentState">true</item>
+        <item name="android:text">›</item>
+        <item name="android:textColor">@color/fg_secondary</item>
+        <item name="android:textSize">22sp</item>
+    </style>
+
+    <!-- Text lines in the technical details dialog -->
+    <style name="FakeAtv.DetailText">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">15sp</item>
     </style>
 </resources>

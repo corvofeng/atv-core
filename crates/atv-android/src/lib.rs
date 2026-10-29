@@ -1,6 +1,7 @@
 //! JNI bindings for Android TV: runs AtvServer and dispatches callbacks into Kotlin/Java.
 
 use std::net::Ipv4Addr;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -11,7 +12,7 @@ use once_cell::sync::Lazy;
 use tokio::runtime::Runtime;
 use tracing::{error, info, warn};
 
-use atv_core::{AtvConfig, AtvDelegate, AtvServer, EventKind, TouchPhase};
+use atv_core::{AtvConfig, AtvDelegate, AtvServer, EventKind, TextOp, TouchPhase, TrackpadMode};
 
 struct JniDelegate {
     jvm: JavaVM,
@@ -82,6 +83,32 @@ impl AtvDelegate for JniDelegate {
         }
     }
 
+    fn on_text(&self, op: TextOp) {
+        // Kotlin side: onText(kind, text, count) with kind "insert" | "delete" | "replace".
+        let (kind, text, count) = match &op {
+            TextOp::Insert(text) => ("insert", text.as_str(), 0),
+            TextOp::Delete(count) => ("delete", "", i32::try_from(*count).unwrap_or(i32::MAX)),
+            TextOp::Replace(text) => ("replace", text.as_str(), 0),
+        };
+        if let Ok(mut env) = self.jvm.attach_current_thread() {
+            let (Ok(kind_str), Ok(text_str)) = (env.new_string(kind), env.new_string(text)) else {
+                warn!("failed to create JString for on_text");
+                return;
+            };
+            let obj = self.callback.as_obj();
+            let _ = env.call_method(
+                obj,
+                "onText",
+                "(Ljava/lang/String;Ljava/lang/String;I)V",
+                &[
+                    JValue::Object(&kind_str),
+                    JValue::Object(&text_str),
+                    JValue::Int(count),
+                ],
+            );
+        }
+    }
+
     fn on_event(&self, kind: EventKind, detail: &str) {
         if let Ok(mut env) = self.jvm.attach_current_thread() {
             let kind_str = match env.new_string(format!("{kind:?}")) {
@@ -99,6 +126,29 @@ impl AtvDelegate for JniDelegate {
                 "(Ljava/lang/String;Ljava/lang/String;)V",
                 &[JValue::Object(&kind_str), JValue::Object(&detail_str)],
             );
+        }
+    }
+
+    fn on_trackpad_mode_changed(&self, mode: TrackpadMode) {
+        info!("[Android JNI] trackpad mode: {}", mode.as_str());
+        if let Ok(mut env) = self.jvm.attach_current_thread() {
+            let obj = self.callback.as_obj();
+            let _ = env.call_method(
+                obj,
+                "onTrackpadModeChanged",
+                "(I)V",
+                &[JValue::Int(mode as u8 as jint)],
+            );
+        }
+    }
+
+    fn show_pairing_pin(&self, pin: &str) {
+        self.call_void_string("onShowPin", pin);
+    }
+
+    fn hide_pairing_pin(&self) {
+        if let Ok(mut env) = self.jvm.attach_current_thread() {
+            let _ = env.call_method(self.callback.as_obj(), "onHidePin", "()V", &[]);
         }
     }
 }
@@ -120,6 +170,7 @@ pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeStartServer(
     device_id: JString,
     server_id: JString,
     local_ip: JString,
+    files_dir: JString,
     callback: JObject,
 ) -> jboolean {
     let mut state_guard = match SERVER_STATE.lock() {
@@ -155,6 +206,12 @@ pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeStartServer(
         .map(|s| s.into())
         .filter(|s: &String| !s.is_empty());
 
+    let files_dir_str: Option<String> = env
+        .get_string(&files_dir)
+        .ok()
+        .map(|s| s.into())
+        .filter(|s: &String| !s.is_empty());
+
     let jvm = match env.get_java_vm() {
         Ok(vm) => vm,
         Err(e) => {
@@ -185,6 +242,18 @@ pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeStartServer(
     config.pin = pin as u32;
     config.device_id = device_id_str;
     config.server_identifier = server_id_str;
+    // Derive the long-term key from the server identifier the app persists. The default key
+    // comes from a UUID file under $HOME, which an Android app process does not have, so it was
+    // new on every start and the iPhone's stored pairing stopped verifying after a reboot.
+    config.private_key = None;
+    // The TV shows a new code for every pairing attempt, and only phones that
+    // paired (kept in the app's files dir) may control it.
+    config.random_pin = true;
+    config.require_pairing = true;
+    config.pairing_dir = files_dir_str.map(PathBuf::from);
+    // The debug web UI listens on every address and its /api/action presses buttons without
+    // pairing; the app does not use it, so it stays off on Android.
+    config.ui_port = None;
     if let Some(ref s) = local_ip_str {
         if let Ok(ip) = s.parse::<Ipv4Addr>() {
             info!("using explicit local IP from Android: {ip}");
@@ -231,6 +300,54 @@ pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeStopServer(
         }
         IS_RUNNING.store(false, Ordering::SeqCst);
         info!("AtvServer stopped on Android TV");
+    }
+}
+
+/// Sets the trackpad mode (0 direction, 1 mouse, 2 idle) of the running server; false when no
+/// server is running. The server calls `onTrackpadModeChanged` back on this thread.
+#[no_mangle]
+pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeSetTrackpadMode(
+    _env: JNIEnv,
+    _class: JClass,
+    mode: jint,
+) -> jboolean {
+    // try_lock: this is called from button callbacks, and nativeStopServer holds the lock while
+    // it drops the runtime, which waits for the very worker thread that is making this call.
+    let state_guard = match SERVER_STATE.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => return JNI_FALSE,
+    };
+    match state_guard.as_ref().and_then(|running| running.server.as_ref()) {
+        Some(server) => {
+            server.set_trackpad_mode(TrackpadMode::from_u8(mode as u8));
+            JNI_TRUE
+        }
+        None => JNI_FALSE,
+    }
+}
+
+/// Returns false when no server is running, so the caller reports the state again later.
+#[no_mangle]
+pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeSetTextFocus(
+    mut env: JNIEnv,
+    _class: JClass,
+    focused: jboolean,
+    field: JString,
+    text: JString,
+    from_phone: jboolean,
+) -> jboolean {
+    let field: String = env.get_string(&field).map(Into::into).unwrap_or_default();
+    let text: String = env.get_string(&text).map(Into::into).unwrap_or_default();
+    let state_guard = match SERVER_STATE.lock() {
+        Ok(guard) => guard,
+        Err(_) => return JNI_FALSE,
+    };
+    match state_guard.as_ref().and_then(|running| running.server.as_ref()) {
+        Some(server) => {
+            server.set_text_focus(focused != JNI_FALSE, &field, &text, from_phone != JNI_FALSE);
+            JNI_TRUE
+        }
+        None => JNI_FALSE,
     }
 }
 

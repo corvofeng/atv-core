@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Technical details: key channels, device ID and the live event log. Nothing here is focusable. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingTop="4dp"
+    android:paddingEnd="24dp"
+    android:paddingBottom="4dp">
+
+    <TextView
+        android:id="@+id/tvDriverStatus"
+        style="@style/FakeAtv.DetailText"
+        android:layout_marginTop="0dp" />
+
+    <TextView
+        android:id="@+id/tvLastKey"
+        style="@style/FakeAtv.DetailText" />
+
+    <TextView
+        android:id="@+id/tvDeviceId"
+        style="@style/FakeAtv.DetailText" />
+
+    <TextView
+        style="@style/FakeAtv.SectionLabel"
+        android:layout_marginTop="16dp"
+        android:text="@string/details_log_title" />
+
+    <!-- Newest first; 12 lines keep the dialog inside a 960x540dp screen without a half-cut line -->
+    <TextView
+        android:id="@+id/tvLog"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:ellipsize="end"
+        android:maxLines="12"
+        android:fontFamily="monospace"
+        android:textColor="@color/text_primary"
+        android:textSize="13sp" />
+
+</LinearLayout>

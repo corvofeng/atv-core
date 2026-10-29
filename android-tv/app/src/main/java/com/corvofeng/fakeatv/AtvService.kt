@@ -29,6 +29,7 @@ class AtvService : Service(), AtvNative.Callback {
         const val ACTION_START = "com.corvofeng.fakeatv.ACTION_START"
         const val ACTION_STOP = "com.corvofeng.fakeatv.ACTION_STOP"
         const val ACTION_SET_MENU_BINDING = "com.corvofeng.fakeatv.SET_MENU_BINDING"
+        const val ACTION_SET_MODE_TOGGLE = "com.corvofeng.fakeatv.SET_MODE_TOGGLE"
         const val BROADCAST_EVENT = "com.corvofeng.fakeatv.EVENT_BROADCAST"
 
         const val EXTRA_NAME = "extra_name"
@@ -40,13 +41,26 @@ class AtvService : Service(), AtvNative.Callback {
         @Volatile
         var isRunning = false
             private set
+
+        /** Pairing code shown in the notification and on MainActivity because the overlay could not be. */
+        @Volatile
+        var fallbackPairingCode: String? = null
+            private set
     }
+
+    /** Pairing code the core asked to show and has not hidden yet. */
+    @Volatile
+    private var shownPairingCode: String? = null
 
     private var multicastLock: WifiManager.MulticastLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     private var currentName: String? = null
     private var currentPin: Int = 1111
+
+    // Last trackpad mode reported by the native server.
+    @Volatile
+    private var trackpadMode = AtvNative.TRACKPAD_DIRECTION
 
     @Volatile
     private var isStopping = false
@@ -80,6 +94,14 @@ class AtvService : Service(), AtvNative.Callback {
         AtvAccessibilityService.instance?.menuBindingButton = lower
         Log.i(TAG, "Applied menu button binding: $lower")
         broadcast("MenuBinding", lower)
+    }
+
+    private fun applyModeToggle(button: String) {
+        val lower = button.lowercase().trim()
+        DeviceInfo.setModeToggleButton(this, lower)
+        KeyDispatcher.modeToggleButton = lower
+        Log.i(TAG, "Applied cursor mode toggle button: $lower")
+        broadcast("ModeToggle", lower)
     }
 
     private fun protectProcess() {
@@ -131,6 +153,10 @@ class AtvService : Service(), AtvNative.Callback {
                         applyMenuBinding(btn)
                         return
                     }
+                    if (action == ACTION_SET_MODE_TOGGLE) {
+                        applyModeToggle(intent.getStringExtra(EXTRA_BUTTON) ?: "none")
+                        return
+                    }
                     if (!isRunning && !isStopping) {
                         val name = currentName ?: DeviceInfo.getDeviceName(this@AtvService)
                         startServer(name, currentPin)
@@ -141,6 +167,7 @@ class AtvService : Service(), AtvNative.Callback {
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_USER_PRESENT)
                 addAction(ACTION_SET_MENU_BINDING)
+                addAction(ACTION_SET_MODE_TOGGLE)
             }
             registerReceiver(receiver, filter)
             screenReceiver = receiver
@@ -161,6 +188,9 @@ class AtvService : Service(), AtvNative.Callback {
                     ?: intent.getStringExtra("button")
                     ?: "none"
                 applyMenuBinding(btn)
+            }
+            ACTION_SET_MODE_TOGGLE -> {
+                applyModeToggle(intent.getStringExtra(EXTRA_BUTTON) ?: "none")
             }
             else -> {
                 val name = intent?.getStringExtra(EXTRA_NAME) ?: DeviceInfo.getDeviceName(this)
@@ -183,11 +213,11 @@ class AtvService : Service(), AtvNative.Callback {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
                     NOTIFICATION_ID,
-                    buildNotification(name, pin),
+                    buildNotification(name),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
                 )
             } else {
-                startForeground(NOTIFICATION_ID, buildNotification(name, pin))
+                startForeground(NOTIFICATION_ID, buildNotification(name))
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to startForeground", e)
@@ -227,9 +257,13 @@ class AtvService : Service(), AtvNative.Callback {
 
                 if (hasValidIp) {
                     Log.i(TAG, "Attempt $attempts: starting native server with IP $localIp (Name: $name, PIN: $pin)")
-                    val started = AtvNative.nativeStartServer(name, pin, deviceId, serverId, localIp!!, this)
+                    val started = AtvNative.nativeStartServer(
+                        name, pin, deviceId, serverId, localIp!!, filesDir.absolutePath, this
+                    )
                     if (started) {
                         isRunning = true
+                        // A field may already be focused; the new server starts unfocused.
+                        AtvAccessibilityService.instance?.resendTextFocus()
                         broadcast("ServerStatus", "running")
                         Log.i(TAG, "Native server started successfully on attempt $attempts with IP $localIp")
                         break
@@ -279,14 +313,26 @@ class AtvService : Service(), AtvNative.Callback {
 
     override fun onButton(name: String) {
         val lowerName = name.lowercase().trim()
+        if (KeyDispatcher.modeToggleButton != "none" && KeyDispatcher.modeToggleButton == lowerName) {
+            // The bound button toggles the cursor instead of sending its key.
+            val next = if (trackpadMode == AtvNative.TRACKPAD_MOUSE) {
+                AtvNative.TRACKPAD_DIRECTION
+            } else {
+                AtvNative.TRACKPAD_MOUSE
+            }
+            AtvNative.nativeSetTrackpadMode(next)
+            broadcast("Button", "$name -> cursor mode toggle")
+            return
+        }
         val isMapped = KeyDispatcher.menuBindingButton.isNotBlank() &&
                 KeyDispatcher.menuBindingButton != "none" &&
                 KeyDispatcher.menuBindingButton.equals(lowerName, ignoreCase = true)
 
         val display = if (isMapped) "$name -> MENU" else name
-        val engine = KeyDispatcher.dispatchButton(name)
-        Log.i(TAG, "onButton: $display via [$engine]")
-        broadcast("Button", "$display [$engine]")
+        val result = KeyDispatcher.dispatchButton(name)
+        Log.i(TAG, "onButton: $display via [${result.engine}]")
+        // The app's event log names the channel in the UI language; logcat keeps the dispatcher's text.
+        broadcast("Button", "$display [${KeyDispatcher.channelLabel(this, result.channel)}]")
     }
 
     override fun onTouch(dx: Double, dy: Double, phase: Int) {
@@ -297,12 +343,79 @@ class AtvService : Service(), AtvNative.Callback {
         broadcast("Audio", "vol=$volume muted=$muted")
     }
 
+    override fun onText(kind: String, text: String, count: Int) {
+        val service = AtvAccessibilityService.instance
+        if (service == null) {
+            Log.w(TAG, "onText: accessibility service is not running, $kind dropped")
+            return
+        }
+        try {
+            service.handleTextOp(kind, text, count)
+        } catch (e: Exception) {
+            Log.e(TAG, "onText: $kind failed", e)
+        }
+    }
+
     override fun onEvent(kind: String, detail: String) {
         Log.i(TAG, "onEvent: $kind $detail")
         if (kind == "MouseClick") {
             AtvAccessibilityService.instance?.handleMouseClick()
         }
         broadcast("Event", "$kind: $detail")
+    }
+
+    override fun onTrackpadModeChanged(mode: Int) {
+        trackpadMode = mode
+        AtvAccessibilityService.instance?.setCursorVisible(mode == AtvNative.TRACKPAD_MOUSE)
+        Log.i(TAG, "onTrackpadModeChanged: $mode")
+        broadcast("TrackpadMode", when (mode) {
+            AtvNative.TRACKPAD_DIRECTION -> "direction"
+            AtvNative.TRACKPAD_MOUSE -> "cursor"
+            else -> "idle"
+        })
+    }
+
+    override fun onShowPin(pin: String) {
+        shownPairingCode = pin
+        val a11y = AtvAccessibilityService.instance
+        if (a11y == null) {
+            Log.w(TAG, "Accessibility service is off: pairing code goes to the notification and the app")
+            showFallbackPairingCode(pin)
+            return
+        }
+        // A retried pair-setup shows a new code without a hide in between: drop an older code
+        // left in the notification and the app; the error path below puts the new one back.
+        if (fallbackPairingCode != null && fallbackPairingCode != pin) {
+            fallbackPairingCode = null
+            updateNotification(null)
+            broadcast("PairingCode", "hidden")
+        }
+        a11y.showPairingPin(pin) {
+            // The overlay failed after the core may have hidden this code already.
+            if (shownPairingCode == pin) showFallbackPairingCode(pin)
+        }
+    }
+
+    override fun onHidePin() {
+        shownPairingCode = null
+        AtvAccessibilityService.instance?.hidePairingPin()
+        if (fallbackPairingCode != null) {
+            fallbackPairingCode = null
+            updateNotification(null)
+            broadcast("PairingCode", "hidden")
+        }
+    }
+
+    private fun showFallbackPairingCode(pin: String) {
+        fallbackPairingCode = pin
+        updateNotification(pin)
+        broadcast("PairingCode", "shown")
+    }
+
+    private fun updateNotification(pairingCode: String?) {
+        val name = currentName ?: DeviceInfo.getDeviceName(this)
+        getSystemService(NotificationManager::class.java)
+            ?.notify(NOTIFICATION_ID, buildNotification(name, pairingCode))
     }
 
     private fun broadcast(type: String, detail: String) {
@@ -328,7 +441,7 @@ class AtvService : Service(), AtvNative.Callback {
         }
     }
 
-    private fun buildNotification(name: String, pin: Int): Notification {
+    private fun buildNotification(name: String, pairingCode: String? = null): Notification {
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -338,7 +451,10 @@ class AtvService : Service(), AtvNative.Callback {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Apple TV Remote Receiver")
-            .setContentText("Listening as \"$name\" (PIN: $pin)")
+            .setContentText(
+                if (pairingCode != null) "Pairing code $pairingCode: enter it on your iPhone"
+                else "Listening as \"$name\""
+            )
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setContentIntent(pendingIntent)
             .setOngoing(true)

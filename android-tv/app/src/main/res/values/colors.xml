@@ -7,4 +7,20 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Main screen palette (dark, 10-foot) -->
+    <color name="screen_bg">#FF0E1014</color>
+    <color name="card_bg">#FF181B21</color>
+    <color name="control_bg">#FF262A32</color>
+    <color name="focus_bg">#FFF2F4F7</color>
+    <color name="text_primary">#FFF2F4F7</color>
+    <color name="text_secondary">#FFA9B1BD</color>
+    <color name="text_tertiary">#FF7D8696</color>
+    <color name="text_on_focus">#FF111318</color>
+    <color name="text_secondary_on_focus">#FF4A5261</color>
+    <color name="status_ok">#FF34C759</color>
+    <color name="status_warn">#FFFF9F0A</color>
+    <color name="status_error">#FFFF5A4F</color>
+    <color name="code_bg">#FF13301E</color>
+    <color name="dialog_focus">#40FFFFFF</color>
 </resources>

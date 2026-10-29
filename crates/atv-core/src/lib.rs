@@ -16,14 +16,16 @@ pub mod error;
 pub mod identity;
 pub mod inspector;
 pub mod opack;
+pub mod pairing;
 pub mod registry;
 pub mod server;
 pub mod session;
 pub mod settings;
 pub mod srp;
+pub mod text_input;
 pub mod tlv;
 
-pub use delegate::{AtvDelegate, EventKind, TouchPhase, TrackpadMode};
+pub use delegate::{AtvDelegate, EventKind, TextOp, TouchPhase, TrackpadMode};
 pub use error::{Error, Result};
 pub use identity::DeviceIdentity;
 pub use inspector::InspectorHub;

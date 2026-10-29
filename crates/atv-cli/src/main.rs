@@ -39,6 +39,10 @@ fn usage() -> ! {
            --device-id <MAC>              Hardware / MAC device ID (default: auto-detected hardware MAC)\n\
            --server-id <UUID>             Unique Server UUID (default: auto-detected hardware UUID)\n\
            --pin <PIN>                    4-digit pairing PIN (default: 1111)\n\
+           --random-pin                   Print a new random PIN for every pairing attempt instead of --pin\n\
+           --require-pairing              Admit only phones that paired with this server; use with --no-ui,\n\
+                                          the debug web UI presses buttons without pairing\n\
+           --pairing-dir <DIR>            Directory for the paired-phone list (default: memory only)\n\
            --ip <IPV4>                    Local IPv4 to advertise (auto-detected if omitted)\n\
            --mouse                        Initial mode: Trackpad mouse (default on macOS)\n\
            --direction, --dpad            Initial mode: Direction keys (D-pad)\n\
@@ -115,6 +119,11 @@ fn parse_args() -> CliArgs {
                     usage();
                 }
                 config.pin = pin;
+            }
+            "--random-pin" => config.random_pin = true,
+            "--require-pairing" => config.require_pairing = true,
+            "--pairing-dir" => {
+                config.pairing_dir = Some(args.next().unwrap_or_else(|| usage()).into());
             }
             "--ip" => {
                 config.ip = Some(
@@ -318,7 +327,11 @@ async fn main() {
     println!("Device Name : \"{}\"", identity.name);
     println!("Device ID   : {}", identity.device_id);
     println!("Server UUID : {}", identity.server_identifier);
-    println!("PIN Code    : {:04}", server.config().pin);
+    if server.config().random_pin {
+        println!("PIN Code    : random, logged when a phone starts pairing");
+    } else {
+        println!("PIN Code    : {:04}", server.config().pin);
+    }
 
     let (init_speed, init_accel, init_verbose) = delegate.get_touchpad_settings();
     let initial_mode_str = match TrackpadMode::from_u8(trackpad_mode.load(std::sync::atomic::Ordering::SeqCst)) {

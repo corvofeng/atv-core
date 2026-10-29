@@ -1,0 +1,107 @@
+<resources>
+    <!-- Header -->
+    <string name="main_subtitle">用 iPhone 或 iPad 控制中心里的遥控器操作这台电视</string>
+    <string name="status_running">● 运行中</string>
+    <string name="status_stopped">● 已停止</string>
+
+    <!-- Connect card: what the iPhone sees and how to pair -->
+    <string name="connect_name_label">iPhone 上显示的电视名称</string>
+    <string name="connect_ip">IP 地址: %1$s</string>
+    <string name="ip_unknown">未知</string>
+    <string name="pair_title">如何配对</string>
+    <string name="pair_steps">1. 在 iPhone 上打开控制中心，点按遥控器。\n2. 在遥控器顶部选择“%1$s”。\n3. 输入这台电视上显示的 4 位配对码。</string>
+    <string name="pair_stopped">服务已停止，iPhone 无法发现这台电视。请启动服务后再配对。</string>
+    <string name="pair_code_label">配对码</string>
+    <string name="pair_code_hint">请在 iPhone 上输入此配对码</string>
+
+    <!-- Accessibility service status -->
+    <string name="a11y_on">无障碍状态: 已开启 (可兜底)</string>
+    <string name="a11y_off">无障碍状态: 未开启 (普通电视推荐开启)</string>
+    <string name="a11y_on_note">配对码会显示在任意画面之上，并可兜底发送按键。</string>
+    <string name="a11y_off_note">开启后配对码会显示在任意画面上；否则仅在本应用和通知中显示。</string>
+
+    <!-- Buttons -->
+    <string name="btn_a11y_settings">无障碍设置</string>
+    <string name="btn_stop_server">停止服务</string>
+    <string name="btn_start_server">启动服务</string>
+
+    <!-- Settings card -->
+    <string name="settings_title">设置</string>
+    <string name="setting_cursor_toggle">光标模式切换键</string>
+    <string name="setting_menu_binding">Menu 键映射</string>
+    <string name="setting_injection_mode">按键注入模式</string>
+    <string name="setting_details">技术详情</string>
+    <string name="details_summary">通道和事件日志</string>
+    <string name="btn_close">关闭</string>
+    <string name="btn_cancel">取消</string>
+    <string name="btn_ok">确定</string>
+
+    <!-- Dialogs. The option order matches the value arrays in MainActivity. -->
+    <string name="dialog_cursor_toggle_title">选择切换光标模式的遥控器按键</string>
+    <string-array name="cursor_toggle_options">
+        <item>电源 键 (power, 默认)</item>
+        <item>无 (不切换)</item>
+    </string-array>
+
+    <string name="dialog_menu_binding_title">绑定遥控器按键为 Android Menu 键</string>
+    <string-array name="menu_binding_options">
+        <item>无 (默认: 保持原始按键功能)</item>
+        <item>播放/暂停 键 (play_pause, 推荐，位于左下角)</item>
+        <item>电视/Home 图标 键 (home, 位于右下角)</item>
+        <item>静音 键 (mute, 位于左上角)</item>
+        <item>返回 键 (menu, 位于底部中间)</item>
+    </string-array>
+    <string-array name="menu_binding_values">
+        <item>无 (默认)</item>
+        <item>播放/暂停 键 (play_pause)</item>
+        <item>电视/Home 图标 键 (home)</item>
+        <item>静音 键 (mute)</item>
+        <item>返回 键 (menu)</item>
+    </string-array>
+
+    <!-- Order matches InjectionMode: AUTO, EVENT, ADB, A11Y -->
+    <string name="dialog_injection_mode_title">选择按键注入模式 (优先策略)</string>
+    <string-array name="injection_mode_options">
+        <item>自动自适应 (硬件 -> ADB -> 无障碍)</item>
+        <item>仅硬件事件 (/dev/input)</item>
+        <item>仅本地 ADB (127.0.0.1:5555)</item>
+        <item>仅无障碍服务 (Accessibility)</item>
+    </string-array>
+    <string-array name="injection_mode_values">
+        <item>自动自适应</item>
+        <item>仅硬件事件</item>
+        <item>仅本地 ADB</item>
+        <item>仅无障碍服务</item>
+    </string-array>
+
+    <!-- Toasts and messages -->
+    <string name="toast_a11y_already_on">无障碍服务已开启</string>
+    <string name="a11y_no_settings_title">无障碍设置</string>
+    <string name="a11y_no_settings_message">此设备没有系统无障碍设置页面。\n\n请通过 ADB 开启：\n\n%1$s</string>
+    <string name="toast_switched">已切换: %1$s</string>
+    <string name="toast_set">已设置: %1$s</string>
+
+    <!-- Technical details -->
+    <string name="details_device_id">设备 ID: %1$s</string>
+    <string name="details_channels">通道: %1$s | %2$s | %3$s</string>
+    <string name="channel_hw_on">硬件[●可用]</string>
+    <string name="channel_hw_off">硬件[○无]</string>
+    <string name="channel_adb_on">ADB[●已连]</string>
+    <string name="channel_adb_off">ADB[○断开]</string>
+    <string name="channel_a11y_on">无障碍[●就绪]</string>
+    <string name="channel_a11y_off">无障碍[○关闭]</string>
+    <string name="details_last_key">当前生效: %1$s</string>
+    <string name="engine_none">未执行</string>
+    <string name="engine_event">硬件事件驱动 (/dev/input)</string>
+    <string name="engine_adb">本地 ADB (127.0.0.1:5555)</string>
+    <string name="engine_a11y">无障碍服务 (Accessibility)</string>
+    <string name="engine_failed">分发失败 (无可用通道)</string>
+    <string name="engine_event_failed">硬件驱动失败 (无权限或设备不存在)</string>
+    <string name="engine_adb_failed">本地 ADB 失败 (端口未连接或已关闭)</string>
+    <string name="engine_a11y_failed">无障碍服务失败 (服务未开启)</string>
+    <string name="details_log_title">事件日志</string>
+    <string name="log_waiting">等待 iPhone 连接…</string>
+    <string name="log_config_injection">[Config] 按键注入模式: %1$s</string>
+    <string name="log_config_menu">[Config] Menu 键绑定: %1$s</string>
+    <string name="log_config_cursor">[Config] 光标模式切换键: %1$s</string>
+</resources>

@@ -1,4 +1,111 @@
 <resources>
     <string name="app_name">Apple TV Remote Receiver</string>
     <string name="accessibility_service_description">Simulates D-pad and media key presses from Apple TV Remote (iPhone/iPad Control Center).</string>
+
+    <!-- Header -->
+    <string name="main_subtitle">Control this TV with the Remote in your iPhone or iPad Control Center</string>
+    <string name="status_running">● Running</string>
+    <string name="status_stopped">● Stopped</string>
+
+    <!-- Connect card: what the iPhone sees and how to pair -->
+    <string name="connect_name_label">Your iPhone sees this TV as</string>
+    <string name="connect_ip">IP address: %1$s</string>
+    <string name="ip_unknown">unknown</string>
+    <string name="pair_title">How to pair</string>
+    <string name="pair_steps">1. Open Control Center on the iPhone and tap Remote.\n2. Choose “%1$s” at the top of the Remote.\n3. Type the 4-digit code that appears on this TV.</string>
+    <string name="pair_stopped">The server is stopped, so the iPhone cannot see this TV. Start the server to pair.</string>
+    <string name="pair_code_label">Pairing code</string>
+    <string name="pair_code_hint">Type this code on your iPhone</string>
+
+    <!-- Accessibility service status -->
+    <string name="a11y_on">Accessibility service: on</string>
+    <string name="a11y_off">Accessibility service: off</string>
+    <string name="a11y_on_note">Shows the pairing code over any app and backs up key presses.</string>
+    <string name="a11y_off_note">Turn it on to see the pairing code over any app. Until then the code shows only in this app and its notification.</string>
+
+    <!-- Buttons -->
+    <string name="btn_a11y_settings">Accessibility settings</string>
+    <string name="btn_stop_server">Stop server</string>
+    <string name="btn_start_server">Start server</string>
+
+    <!-- Settings card -->
+    <string name="settings_title">Settings</string>
+    <string name="setting_cursor_toggle">Cursor mode button</string>
+    <string name="setting_menu_binding">Button for Android Menu</string>
+    <string name="setting_injection_mode">How keys are sent</string>
+    <string name="setting_details">Technical details</string>
+    <string name="details_summary">Channels and event log</string>
+    <string name="btn_close">Close</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="btn_ok">OK</string>
+
+    <!-- Dialogs. The option order matches the value arrays in MainActivity. -->
+    <string name="dialog_cursor_toggle_title">Remote button that switches cursor mode</string>
+    <string-array name="cursor_toggle_options">
+        <item>Power button (default)</item>
+        <item>None (no switching)</item>
+    </string-array>
+
+    <string name="dialog_menu_binding_title">Remote button that acts as the Android Menu key</string>
+    <string-array name="menu_binding_options">
+        <item>None (default: every button keeps its own function)</item>
+        <item>Play/Pause (recommended, bottom left)</item>
+        <item>TV/Home icon (bottom right)</item>
+        <item>Mute (top left)</item>
+        <item>Back (bottom center)</item>
+    </string-array>
+    <string-array name="menu_binding_values">
+        <item>None (default)</item>
+        <item>Play/Pause</item>
+        <item>TV/Home icon</item>
+        <item>Mute</item>
+        <item>Back</item>
+    </string-array>
+
+    <!-- Order matches InjectionMode: AUTO, EVENT, ADB, A11Y -->
+    <string name="dialog_injection_mode_title">How keys are sent (in order of preference)</string>
+    <string-array name="injection_mode_options">
+        <item>Automatic (hardware → ADB → accessibility)</item>
+        <item>Hardware input only (/dev/input)</item>
+        <item>Local ADB only (127.0.0.1:5555)</item>
+        <item>Accessibility service only</item>
+    </string-array>
+    <string-array name="injection_mode_values">
+        <item>Automatic</item>
+        <item>Hardware input only</item>
+        <item>Local ADB only</item>
+        <item>Accessibility only</item>
+    </string-array>
+
+    <!-- Toasts and messages -->
+    <string name="toast_a11y_already_on">The accessibility service is already on</string>
+    <string name="a11y_no_settings_title">Accessibility settings</string>
+    <string name="a11y_no_settings_message">This TV has no system Accessibility settings page.\n\nTurn the service on over ADB:\n\n%1$s</string>
+    <string name="toast_switched">Switched to: %1$s</string>
+    <string name="toast_set">Set: %1$s</string>
+
+    <!-- Technical details -->
+    <string name="details_device_id">Device ID: %1$s</string>
+    <string name="details_channels">Channels: %1$s | %2$s | %3$s</string>
+    <!-- Non-breaking spaces keep each channel on one line when the list wraps -->
+    <string name="channel_hw_on">Hardware\u00A0[●\u00A0available]</string>
+    <string name="channel_hw_off">Hardware\u00A0[○\u00A0none]</string>
+    <string name="channel_adb_on">ADB\u00A0[●\u00A0connected]</string>
+    <string name="channel_adb_off">ADB\u00A0[○\u00A0disconnected]</string>
+    <string name="channel_a11y_on">Accessibility\u00A0[●\u00A0ready]</string>
+    <string name="channel_a11y_off">Accessibility\u00A0[○\u00A0off]</string>
+    <string name="details_last_key">Last key went through: %1$s</string>
+    <string name="engine_none">nothing yet</string>
+    <string name="engine_event">hardware input (/dev/input)</string>
+    <string name="engine_adb">local ADB (127.0.0.1:5555)</string>
+    <string name="engine_a11y">accessibility service</string>
+    <string name="engine_failed">failed, no channel available</string>
+    <string name="engine_event_failed">hardware input failed (no permission or no device)</string>
+    <string name="engine_adb_failed">local ADB failed (port not connected or closed)</string>
+    <string name="engine_a11y_failed">accessibility service failed (the service is off)</string>
+    <string name="details_log_title">Event log</string>
+    <string name="log_waiting">Waiting for the iPhone to connect…</string>
+    <string name="log_config_injection">[Config] Key sending: %1$s</string>
+    <string name="log_config_menu">[Config] Android Menu button: %1$s</string>
+    <string name="log_config_cursor">[Config] Cursor mode button: %1$s</string>
 </resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Primary text on a focusable control: dark on the light focus fill. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="@color/text_on_focus" android:state_focused="true" />
+    <item android:color="@color/text_on_focus" android:state_pressed="true" />
+    <item android:color="@color/text_primary" />
+</selector>
