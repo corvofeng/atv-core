@@ -30,6 +30,59 @@ pub const MEDIA_CONTROL_VOLUME: u64 = 0x0100;
 const SWIPE_MIN_DISTANCE: f64 = 150.0; // touchpad units; the surface is 1000x1000
 const TAP_MAX_DISTANCE: f64 = 60.0; // below this a touch sequence counts as a tap
 
+/// Turns one touch sequence into directional steps while the finger moves, one step per
+/// `SWIPE_MIN_DISTANCE` of travel, so a long swipe walks several items like a real Apple TV.
+#[derive(Debug, Default)]
+struct SwipeStepper {
+    origin: (f64, f64),
+    anchor: (f64, f64),
+    stepped: bool,
+}
+
+impl SwipeStepper {
+    fn begin(&mut self, pos: (f64, f64)) {
+        *self = Self {
+            origin: pos,
+            anchor: pos,
+            stepped: false,
+        };
+    }
+
+    /// Steps owed for the finger at `pos`. The anchor advances one step along the stepped axis
+    /// and snaps to the finger on the other one, so diagonal drift never adds up to a step.
+    fn moved(&mut self, pos: (f64, f64)) -> Vec<&'static str> {
+        let mut steps = Vec::new();
+        loop {
+            let (dx, dy) = (pos.0 - self.anchor.0, pos.1 - self.anchor.1);
+            if dx.abs().max(dy.abs()) < SWIPE_MIN_DISTANCE {
+                break;
+            }
+            if dx.abs() >= dy.abs() {
+                self.anchor = (self.anchor.0 + SWIPE_MIN_DISTANCE.copysign(dx), pos.1);
+                steps.push(if dx > 0.0 { "right" } else { "left" });
+            } else {
+                self.anchor = (pos.0, self.anchor.1 + SWIPE_MIN_DISTANCE.copysign(dy));
+                steps.push(if dy > 0.0 { "down" } else { "up" });
+            }
+        }
+        self.stepped |= !steps.is_empty();
+        steps
+    }
+
+    /// Finger lifted at `pos`: the remaining steps, or "select" for a touch that never stepped
+    /// and stayed within the tap radius.
+    fn ended(&mut self, pos: (f64, f64)) -> Vec<&'static str> {
+        let steps = self.moved(pos);
+        let travel = (pos.0 - self.origin.0)
+            .abs()
+            .max((pos.1 - self.origin.1).abs());
+        if !self.stepped && travel < TAP_MAX_DISTANCE {
+            return vec!["select"];
+        }
+        steps
+    }
+}
+
 /// Fixed `altIRK` value from `fake_atv._pair_setup_m5`.
 const ALT_IRK: [u8; 16] = [
     0x2d, 0x54, 0xe0, 0x7a, 0x88, 0x2a, 0x65, 0x6e, 0x11, 0xab, 0x82, 0x76, 0x2d, 0x27, 0x25,
@@ -88,6 +141,7 @@ pub struct CompanionSession {
     touch_origin: Option<(f64, f64)>,
     touch_last: Option<(f64, f64)>,
     touch_moved: bool,
+    swipe: SwipeStepper,
     volume: f64,
     muted: bool,
     system_status: u64,
@@ -144,6 +198,7 @@ impl CompanionSession {
             touch_origin: None,
             touch_last: None,
             touch_moved: false,
+            swipe: SwipeStepper::default(),
             volume: initial_volume,
             muted: initial_muted,
             system_status: 3, // Awake
@@ -964,6 +1019,7 @@ impl CompanionSession {
                 self.touch_origin = Some((x, y));
                 self.touch_last = Some((x, y));
                 self.touch_moved = false;
+                self.swipe.begin((x, y));
                 if mode == TrackpadMode::Mouse {
                     self.delegate.on_touch(0.0, 0.0, TouchPhase::Began);
                 }
@@ -993,6 +1049,11 @@ impl CompanionSession {
                 }
             }
             self.touch_last = Some(position);
+            if mode == TrackpadMode::Direction {
+                for name in self.swipe.moved(position) {
+                    self.press(name);
+                }
+            }
             return;
         }
 
@@ -1024,31 +1085,14 @@ impl CompanionSession {
             return;
         }
 
-        if distance < TAP_MAX_DISTANCE {
-            self.delegate.on_button("select");
-            self.inspector.emit("button", "{\"name\":\"select\"}");
-            return;
+        for name in self.swipe.ended(position) {
+            self.press(name);
         }
+    }
 
-        if distance < SWIPE_MIN_DISTANCE {
-            return;
-        }
-        let direction = if dx.abs() > dy.abs() {
-            if dx > 0.0 {
-                "right"
-            } else {
-                "left"
-            }
-        } else if dy > 0.0 {
-            "down"
-        } else {
-            "up"
-        };
-        self.delegate.on_button(direction);
-        self.inspector.emit(
-            "button",
-            &format!("{{\"name\":\"{direction}\"}}"),
-        );
+    fn press(&self, name: &str) {
+        self.delegate.on_button(name);
+        self.inspector.emit("button", &format!("{{\"name\":\"{name}\"}}"));
     }
 }
 
@@ -1060,3 +1104,75 @@ impl Drop for CompanionSession {
     }
 }
 
+#[cfg(test)]
+mod swipe_tests {
+    use super::SwipeStepper;
+
+    /// Feeds a straight finger path from `from` to `to` in 10-unit moves and returns every step.
+    fn drag(s: &mut SwipeStepper, from: (f64, f64), to: (f64, f64)) -> Vec<&'static str> {
+        let n = ((to.0 - from.0).abs().max((to.1 - from.1).abs()) / 10.0).ceil().max(1.0);
+        (1..=n as usize)
+            .flat_map(|i| {
+                let t = i as f64 / n;
+                s.moved((from.0 + (to.0 - from.0) * t, from.1 + (to.1 - from.1) * t))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn tap_is_select() {
+        let mut s = SwipeStepper::default();
+        s.begin((500.0, 500.0));
+        assert!(s.moved((520.0, 510.0)).is_empty());
+        assert_eq!(s.ended((520.0, 510.0)), vec!["select"]);
+    }
+
+    #[test]
+    fn short_drag_does_nothing() {
+        let mut s = SwipeStepper::default();
+        s.begin((500.0, 500.0));
+        assert!(drag(&mut s, (500.0, 500.0), (600.0, 500.0)).is_empty());
+        assert!(s.ended((600.0, 500.0)).is_empty());
+    }
+
+    #[test]
+    fn long_swipe_steps_while_moving() {
+        let mut s = SwipeStepper::default();
+        s.begin((100.0, 500.0));
+        assert_eq!(drag(&mut s, (100.0, 500.0), (800.0, 500.0)), vec!["right"; 4]);
+        assert!(s.ended((800.0, 500.0)).is_empty());
+    }
+
+    #[test]
+    fn swipe_without_moves_still_steps_on_lift() {
+        let mut s = SwipeStepper::default();
+        s.begin((500.0, 500.0));
+        assert_eq!(s.ended((500.0, 340.0)), vec!["up"]);
+    }
+
+    #[test]
+    fn turning_swipe_steps_along_each_leg() {
+        let mut s = SwipeStepper::default();
+        s.begin((100.0, 100.0));
+        let mut steps = drag(&mut s, (100.0, 100.0), (420.0, 100.0));
+        steps.extend(drag(&mut s, (420.0, 100.0), (420.0, 420.0)));
+        assert_eq!(steps, vec!["right", "right", "down", "down"]);
+    }
+
+    #[test]
+    fn diagonal_drift_does_not_add_a_step() {
+        let mut s = SwipeStepper::default();
+        s.begin((100.0, 400.0));
+        assert_eq!(drag(&mut s, (100.0, 400.0), (800.0, 540.0)), vec!["right"; 4]);
+    }
+
+    #[test]
+    fn swipe_back_to_start_is_not_a_tap() {
+        let mut s = SwipeStepper::default();
+        s.begin((500.0, 500.0));
+        let mut steps = drag(&mut s, (500.0, 500.0), (820.0, 500.0));
+        steps.extend(drag(&mut s, (820.0, 500.0), (500.0, 500.0)));
+        steps.extend(s.ended((500.0, 500.0)));
+        assert_eq!(steps, vec!["right", "right", "left", "left"]);
+    }
+}
