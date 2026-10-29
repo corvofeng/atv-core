@@ -630,22 +630,11 @@ async fn handle_companion(
         peer_ip.to_string(),
         session_established,
     );
-    let timeout_deadline = session.timeout_deadline();
     let mut disconnect_reason = "peer_closed".to_string();
 
     const MAX_FRAME_LENGTH: usize = 2 * 1024 * 1024; // 2MB protection against malformed frames
 
     loop {
-        let deadline = *timeout_deadline.lock().await;
-        let timeout_fut = async {
-            if let Some(dl) = deadline {
-                tokio::time::sleep_until(dl).await;
-                true
-            } else {
-                std::future::pending::<bool>().await
-            }
-        };
-
         let mut header = [0u8; 4];
         tokio::select! {
             res = reader.read_exact(&mut header) => {
@@ -663,13 +652,6 @@ async fn handle_companion(
                 disconnect_reason = "superseded".to_string();
                 info!("companion connection from {peer} superseded by new connection");
                 break;
-            }
-            _ = timeout_fut => {
-                if !session.is_established() {
-                    disconnect_reason = "sessionless_timeout".to_string();
-                    info!("companion connection from {peer} timed out without remote session; closing to free channel");
-                    break;
-                }
             }
         }
         let Some(frame_type) = FrameType::from_u8(header[0]) else {

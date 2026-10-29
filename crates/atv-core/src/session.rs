@@ -98,7 +98,6 @@ pub struct CompanionSession {
     conn_id: u64,
     peer_ip: String,
     device_id: Option<String>,
-    timeout_deadline: Arc<Mutex<Option<tokio::time::Instant>>>,
 }
 
 impl CompanionSession {
@@ -154,16 +153,7 @@ impl CompanionSession {
             conn_id,
             peer_ip,
             device_id: None,
-            timeout_deadline: Arc::new(Mutex::new(None)),
         }
-    }
-
-    pub fn is_established(&self) -> bool {
-        self.session_established.load(Ordering::SeqCst)
-    }
-
-    pub fn timeout_deadline(&self) -> Arc<Mutex<Option<tokio::time::Instant>>> {
-        self.timeout_deadline.clone()
     }
 
     pub fn device_id(&self) -> Option<String> {
@@ -559,10 +549,6 @@ impl CompanionSession {
         self.delegate.on_event(EventKind::Verified, "");
         self.inspector.emit("verified", "{}");
 
-        // Kick connections that do not send _sessionStart within 3.0s
-        *self.timeout_deadline.lock().await =
-            Some(tokio::time::Instant::now() + std::time::Duration::from_millis(3000));
-
         Ok(())
     }
 
@@ -583,7 +569,6 @@ impl CompanionSession {
         match identifier.as_deref() {
             Some("_sessionStart") => {
                 self.session_established.store(true, Ordering::SeqCst);
-                *self.timeout_deadline.lock().await = None;
                 self.inspector.session_started();
                 let local_sid = content
                     .get("_sid")
@@ -610,7 +595,6 @@ impl CompanionSession {
             }
             Some("TVRCSessionStart") => {
                 self.session_established.store(true, Ordering::SeqCst);
-                *self.timeout_deadline.lock().await = None;
                 self.inspector.session_started();
                 let version = content
                     .get("ProtocolVersionKey")
@@ -645,24 +629,20 @@ impl CompanionSession {
             }
             Some("_hidC") => {
                 self.session_established.store(true, Ordering::SeqCst);
-                *self.timeout_deadline.lock().await = None;
                 self.handle_hid_command(&content, xid).await?;
             }
             Some("_touchStart") => {
                 self.session_established.store(true, Ordering::SeqCst);
-                *self.timeout_deadline.lock().await = None;
                 self.send_response(xid, Some(Value::dict(vec![Value::kv("_i", Value::Int(1))])), 0)
                     .await?;
             }
             Some("_hidT") => {
                 self.session_established.store(true, Ordering::SeqCst);
-                *self.timeout_deadline.lock().await = None;
                 self.send_response(xid, None, 0).await?;
                 self.handle_touch(&content);
             }
             Some("_touchStop") | Some("_touchMove") | Some("_tiStop") => {
                 self.session_established.store(true, Ordering::SeqCst);
-                *self.timeout_deadline.lock().await = None;
                 self.send_response(xid, None, 0).await?;
             }
             Some("_interest") => {
@@ -795,18 +775,6 @@ impl CompanionSession {
                 self.send_response(xid, None, 0).await?;
                 info!("<< _systemInfo: replied and refreshed power state (session_id={session_id}, renewed={is_renewed})");
                 self.send_power_state(None).await?;
-
-                // Background probes from sharingd/rapportd have high bit set in xid (>= 0x80000000)
-                // and never send _sessionStart. Real remote control (tvremoted) sends _sessionStart
-                // within 10-20ms. If probe, set a short 1.0s timeout to release the channel.
-                let is_background_probe = xid.map_or(false, |x| (x & 0x8000_0000) != 0);
-                let timeout = if is_background_probe {
-                    std::time::Duration::from_millis(1000)
-                } else {
-                    std::time::Duration::from_millis(2500)
-                };
-                *self.timeout_deadline.lock().await =
-                    Some(tokio::time::Instant::now() + timeout);
             }
             _ => {
                 if let Some(id) = &identifier {
