@@ -4,10 +4,18 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Context
 import android.content.Intent
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
+import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -27,6 +35,10 @@ class AtvAccessibilityService : AccessibilityService() {
     private var screenHeight = 1080
     private var pointerX = 960f
     private var pointerY = 540f
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var cursorView: View? = null
+    private var cursorParams: WindowManager.LayoutParams? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -77,6 +89,8 @@ class AtvAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        cursorView?.let { (getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.removeView(it) }
+        cursorView = null
         instance = null
         Log.i(TAG, "AtvAccessibilityService destroyed")
     }
@@ -169,7 +183,49 @@ class AtvAccessibilityService : AccessibilityService() {
             val sensitivity = 1.5f
             pointerX = (pointerX + dx.toFloat() * sensitivity).coerceIn(0f, screenWidth.toFloat())
             pointerY = (pointerY + dy.toFloat() * sensitivity).coerceIn(0f, screenHeight.toFloat())
+            mainHandler.post { moveCursor() }
         }
+    }
+
+    /** Shows the pointer overlay in cursor mode and hides it otherwise; callable from any thread. */
+    fun setCursorVisible(visible: Boolean) {
+        mainHandler.post {
+            val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return@post
+            val view = cursorView
+            if (visible && view == null) {
+                val params = WindowManager.LayoutParams(
+                    PointerView.WIDTH,
+                    PointerView.HEIGHT,
+                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    PixelFormat.TRANSLUCENT
+                ).apply {
+                    gravity = Gravity.TOP or Gravity.START
+                    x = pointerX.toInt()
+                    y = pointerY.toInt()
+                }
+                val pointer = PointerView(this)
+                wm.addView(pointer, params)
+                cursorView = pointer
+                cursorParams = params
+            } else if (!visible && view != null) {
+                wm.removeView(view)
+                cursorView = null
+                cursorParams = null
+            }
+        }
+    }
+
+    // Main thread only.
+    private fun moveCursor() {
+        val view = cursorView ?: return
+        val params = cursorParams ?: return
+        params.x = pointerX.toInt()
+        params.y = pointerY.toInt()
+        (getSystemService(Context.WINDOW_SERVICE) as? WindowManager)?.updateViewLayout(view, params)
     }
 
     fun handleMouseClick() {
@@ -193,5 +249,39 @@ class AtvAccessibilityService : AccessibilityService() {
         val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         dispatchGesture(gesture, null, null)
+    }
+}
+
+/** Arrow pointer whose tip sits at the view's top-left corner, the point a click taps. */
+private class PointerView(context: Context) : View(context) {
+    companion object {
+        const val WIDTH = 36
+        const val HEIGHT = 57
+    }
+
+    private val arrow = Path().apply {
+        moveTo(1.5f, 1.5f)
+        lineTo(1.5f, 49.5f)
+        lineTo(13.5f, 37.5f)
+        lineTo(22.5f, 55.5f)
+        lineTo(28.5f, 52.5f)
+        lineTo(19.5f, 34.5f)
+        lineTo(34.5f, 34.5f)
+        close()
+    }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.FILL
+    }
+    private val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.BLACK
+        style = Paint.Style.STROKE
+        strokeWidth = 2.5f
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        canvas.drawPath(arrow, fill)
+        canvas.drawPath(arrow, outline)
     }
 }

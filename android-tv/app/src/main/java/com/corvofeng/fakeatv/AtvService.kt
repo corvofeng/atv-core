@@ -29,6 +29,7 @@ class AtvService : Service(), AtvNative.Callback {
         const val ACTION_START = "com.corvofeng.fakeatv.ACTION_START"
         const val ACTION_STOP = "com.corvofeng.fakeatv.ACTION_STOP"
         const val ACTION_SET_MENU_BINDING = "com.corvofeng.fakeatv.SET_MENU_BINDING"
+        const val ACTION_SET_MODE_TOGGLE = "com.corvofeng.fakeatv.SET_MODE_TOGGLE"
         const val BROADCAST_EVENT = "com.corvofeng.fakeatv.EVENT_BROADCAST"
 
         const val EXTRA_NAME = "extra_name"
@@ -47,6 +48,10 @@ class AtvService : Service(), AtvNative.Callback {
 
     private var currentName: String? = null
     private var currentPin: Int = 1111
+
+    // Last trackpad mode reported by the native server.
+    @Volatile
+    private var trackpadMode = AtvNative.TRACKPAD_DIRECTION
 
     @Volatile
     private var isStopping = false
@@ -80,6 +85,14 @@ class AtvService : Service(), AtvNative.Callback {
         AtvAccessibilityService.instance?.menuBindingButton = lower
         Log.i(TAG, "Applied menu button binding: $lower")
         broadcast("MenuBinding", lower)
+    }
+
+    private fun applyModeToggle(button: String) {
+        val lower = button.lowercase().trim()
+        DeviceInfo.setModeToggleButton(this, lower)
+        KeyDispatcher.modeToggleButton = lower
+        Log.i(TAG, "Applied cursor mode toggle button: $lower")
+        broadcast("ModeToggle", lower)
     }
 
     private fun protectProcess() {
@@ -131,6 +144,10 @@ class AtvService : Service(), AtvNative.Callback {
                         applyMenuBinding(btn)
                         return
                     }
+                    if (action == ACTION_SET_MODE_TOGGLE) {
+                        applyModeToggle(intent.getStringExtra(EXTRA_BUTTON) ?: "none")
+                        return
+                    }
                     if (!isRunning && !isStopping) {
                         val name = currentName ?: DeviceInfo.getDeviceName(this@AtvService)
                         startServer(name, currentPin)
@@ -141,6 +158,7 @@ class AtvService : Service(), AtvNative.Callback {
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_USER_PRESENT)
                 addAction(ACTION_SET_MENU_BINDING)
+                addAction(ACTION_SET_MODE_TOGGLE)
             }
             registerReceiver(receiver, filter)
             screenReceiver = receiver
@@ -161,6 +179,9 @@ class AtvService : Service(), AtvNative.Callback {
                     ?: intent.getStringExtra("button")
                     ?: "none"
                 applyMenuBinding(btn)
+            }
+            ACTION_SET_MODE_TOGGLE -> {
+                applyModeToggle(intent.getStringExtra(EXTRA_BUTTON) ?: "none")
             }
             else -> {
                 val name = intent?.getStringExtra(EXTRA_NAME) ?: DeviceInfo.getDeviceName(this)
@@ -279,6 +300,17 @@ class AtvService : Service(), AtvNative.Callback {
 
     override fun onButton(name: String) {
         val lowerName = name.lowercase().trim()
+        if (KeyDispatcher.modeToggleButton != "none" && KeyDispatcher.modeToggleButton == lowerName) {
+            // The bound button toggles the cursor instead of sending its key.
+            val next = if (trackpadMode == AtvNative.TRACKPAD_MOUSE) {
+                AtvNative.TRACKPAD_DIRECTION
+            } else {
+                AtvNative.TRACKPAD_MOUSE
+            }
+            AtvNative.nativeSetTrackpadMode(next)
+            broadcast("Button", "$name -> cursor mode toggle")
+            return
+        }
         val isMapped = KeyDispatcher.menuBindingButton.isNotBlank() &&
                 KeyDispatcher.menuBindingButton != "none" &&
                 KeyDispatcher.menuBindingButton.equals(lowerName, ignoreCase = true)
@@ -303,6 +335,17 @@ class AtvService : Service(), AtvNative.Callback {
             AtvAccessibilityService.instance?.handleMouseClick()
         }
         broadcast("Event", "$kind: $detail")
+    }
+
+    override fun onTrackpadModeChanged(mode: Int) {
+        trackpadMode = mode
+        AtvAccessibilityService.instance?.setCursorVisible(mode == AtvNative.TRACKPAD_MOUSE)
+        Log.i(TAG, "onTrackpadModeChanged: $mode")
+        broadcast("TrackpadMode", when (mode) {
+            AtvNative.TRACKPAD_DIRECTION -> "direction"
+            AtvNative.TRACKPAD_MOUSE -> "cursor"
+            else -> "idle"
+        })
     }
 
     private fun broadcast(type: String, detail: String) {

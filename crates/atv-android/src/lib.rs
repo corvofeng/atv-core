@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use tokio::runtime::Runtime;
 use tracing::{error, info, warn};
 
-use atv_core::{AtvConfig, AtvDelegate, AtvServer, EventKind, TouchPhase};
+use atv_core::{AtvConfig, AtvDelegate, AtvServer, EventKind, TouchPhase, TrackpadMode};
 
 struct JniDelegate {
     jvm: JavaVM,
@@ -98,6 +98,19 @@ impl AtvDelegate for JniDelegate {
                 "onEvent",
                 "(Ljava/lang/String;Ljava/lang/String;)V",
                 &[JValue::Object(&kind_str), JValue::Object(&detail_str)],
+            );
+        }
+    }
+
+    fn on_trackpad_mode_changed(&self, mode: TrackpadMode) {
+        info!("[Android JNI] trackpad mode: {}", mode.as_str());
+        if let Ok(mut env) = self.jvm.attach_current_thread() {
+            let obj = self.callback.as_obj();
+            let _ = env.call_method(
+                obj,
+                "onTrackpadModeChanged",
+                "(I)V",
+                &[JValue::Int(mode as u8 as jint)],
             );
         }
     }
@@ -231,6 +244,29 @@ pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeStopServer(
         }
         IS_RUNNING.store(false, Ordering::SeqCst);
         info!("AtvServer stopped on Android TV");
+    }
+}
+
+/// Sets the trackpad mode (0 direction, 1 mouse, 2 idle) of the running server; false when no
+/// server is running. The server calls `onTrackpadModeChanged` back on this thread.
+#[no_mangle]
+pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeSetTrackpadMode(
+    _env: JNIEnv,
+    _class: JClass,
+    mode: jint,
+) -> jboolean {
+    // try_lock: this is called from button callbacks, and nativeStopServer holds the lock while
+    // it drops the runtime, which waits for the very worker thread that is making this call.
+    let state_guard = match SERVER_STATE.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => return JNI_FALSE,
+    };
+    match state_guard.as_ref().and_then(|running| running.server.as_ref()) {
+        Some(server) => {
+            server.set_trackpad_mode(TrackpadMode::from_u8(mode as u8));
+            JNI_TRUE
+        }
+        None => JNI_FALSE,
     }
 }
 

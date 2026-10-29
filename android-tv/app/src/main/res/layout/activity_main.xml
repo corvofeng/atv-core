@@ -89,6 +89,15 @@
                     android:textSize="14sp" />
 
                 <TextView
+                    android:id="@+id/tvModeToggle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="光标模式切换键: 电源 键 (power)"
+                    android:textColor="#ECEFF1"
+                    android:textSize="14sp" />
+
+                <TextView
                     android:id="@+id/tvInjectionMode"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -148,6 +157,21 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="14dp"
                         android:text="设置 Menu 键"
+                        android:focusable="true" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnModeToggle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="设置光标切换键"
                         android:focusable="true" />
 
                 </LinearLayout>

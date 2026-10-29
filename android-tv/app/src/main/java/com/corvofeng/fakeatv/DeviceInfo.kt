@@ -13,6 +13,7 @@ object DeviceInfo {
 
     const val PREF_MENU_BUTTON_BINDING = "menu_button_binding"
     const val PREF_INJECTION_MODE = "injection_mode"
+    const val PREF_MODE_TOGGLE_BUTTON = "mode_toggle_button"
 
     fun getPrefs(context: Context): SharedPreferences {
         val storageContext = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && !context.isDeviceProtectedStorage) {
@@ -33,6 +34,15 @@ object DeviceInfo {
 
     fun setMenuButtonBinding(context: Context, buttonName: String) {
         getPrefs(context).edit().putString(PREF_MENU_BUTTON_BINDING, buttonName.lowercase()).apply()
+    }
+
+    /** Remote button that toggles the cursor mode instead of sending its key ("none" disables). */
+    fun getModeToggleButton(context: Context): String {
+        return getPrefs(context).getString(PREF_MODE_TOGGLE_BUTTON, "power") ?: "power"
+    }
+
+    fun setModeToggleButton(context: Context, buttonName: String) {
+        getPrefs(context).edit().putString(PREF_MODE_TOGGLE_BUTTON, buttonName.lowercase()).apply()
     }
 
     fun getInjectionMode(context: Context): String {

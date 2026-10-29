@@ -25,6 +25,10 @@ object KeyDispatcher {
     @Volatile
     var menuBindingButton: String = "none"
 
+    // Remote button that toggles the cursor mode instead of sending its key.
+    @Volatile
+    var modeToggleButton: String = "power"
+
     @Volatile
     var lastUsedEngine: String = "未执行"
         private set
@@ -33,6 +37,7 @@ object KeyDispatcher {
         val savedModeKey = DeviceInfo.getInjectionMode(context)
         currentMode = InjectionMode.fromKey(savedModeKey)
         menuBindingButton = DeviceInfo.getMenuButtonBinding(context)
+        modeToggleButton = DeviceInfo.getModeToggleButton(context)
         Log.i(TAG, "KeyDispatcher initialized: mode=$currentMode, menuBinding=$menuBindingButton")
 
         // Pre-warm local ADB connection in background if mode is AUTO or ADB

@@ -18,17 +18,31 @@ import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        // Remote buttons that can toggle the cursor mode, and their labels. Mute is not offered:
+        // the core flips its own mute state and reports it to the phone before the app sees it.
+        // Siri is not offered either: the iPhone remote has no Siri button, and holding the
+        // phone's side button does not reach the TV.
+        private val MODE_TOGGLE_VALUES = arrayOf("power", "none")
+        private val MODE_TOGGLE_OPTIONS = arrayOf(
+            "电源 键 (power, 默认)",
+            "无 (不切换)"
+        )
+    }
+
     private lateinit var tvStatus: TextView
     private lateinit var tvIp: TextView
     private lateinit var tvPin: TextView
     private lateinit var tvAccessibility: TextView
     private lateinit var tvMenuBinding: TextView
+    private lateinit var tvModeToggle: TextView
     private lateinit var tvInjectionMode: TextView
     private lateinit var tvDriverStatus: TextView
     private lateinit var tvLog: TextView
     private lateinit var btnToggle: Button
     private lateinit var btnAccessibility: Button
     private lateinit var btnMenuBinding: Button
+    private lateinit var btnModeToggle: Button
     private lateinit var btnInjectionMode: Button
 
     private val logEntries = mutableListOf<String>()
@@ -53,16 +67,22 @@ class MainActivity : AppCompatActivity() {
         tvPin = findViewById(R.id.tvPin)
         tvAccessibility = findViewById(R.id.tvAccessibility)
         tvMenuBinding = findViewById(R.id.tvMenuBinding)
+        tvModeToggle = findViewById(R.id.tvModeToggle)
         tvInjectionMode = findViewById(R.id.tvInjectionMode)
         tvDriverStatus = findViewById(R.id.tvDriverStatus)
         tvLog = findViewById(R.id.tvLog)
         btnToggle = findViewById(R.id.btnToggle)
         btnAccessibility = findViewById(R.id.btnAccessibility)
         btnMenuBinding = findViewById(R.id.btnMenuBinding)
+        btnModeToggle = findViewById(R.id.btnModeToggle)
         btnInjectionMode = findViewById(R.id.btnInjectionMode)
 
         btnMenuBinding.setOnClickListener {
             showMenuBindingDialog()
+        }
+
+        btnModeToggle.setOnClickListener {
+            showModeToggleDialog()
         }
 
         btnInjectionMode.setOnClickListener {
@@ -157,6 +177,11 @@ class MainActivity : AppCompatActivity() {
         val currentBinding = DeviceInfo.getMenuButtonBinding(this)
         tvMenuBinding.text = "Menu 键映射: ${getMenuBindingDisplayName(currentBinding)}"
 
+        val toggle = DeviceInfo.getModeToggleButton(this)
+        val toggleIndex = MODE_TOGGLE_VALUES.indexOf(toggle)
+        tvModeToggle.text = "光标模式切换键: " +
+            if (toggleIndex >= 0) MODE_TOGGLE_OPTIONS[toggleIndex] else toggle
+
         // Injection mode display
         val mode = KeyDispatcher.currentMode
         tvInjectionMode.text = "按键注入模式: ${mode.displayName}"
@@ -225,6 +250,33 @@ class MainActivity : AppCompatActivity() {
                 appendLog("[Config] Menu 键绑定: ${options[which]}")
                 updateUi()
                 Toast.makeText(this, "已设置: ${options[which]}", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showModeToggleDialog() {
+        val current = DeviceInfo.getModeToggleButton(this)
+        val currentIndex = MODE_TOGGLE_VALUES.indexOf(current).let { if (it >= 0) it else 0 }
+
+        AlertDialog.Builder(this)
+            .setTitle("选择切换光标模式的遥控器按键")
+            .setSingleChoiceItems(MODE_TOGGLE_OPTIONS, currentIndex) { dialog, which ->
+                val selected = MODE_TOGGLE_VALUES[which]
+                DeviceInfo.setModeToggleButton(this, selected)
+                KeyDispatcher.modeToggleButton = selected
+
+                // Notify running AtvService
+                val intent = Intent(this, AtvService::class.java).apply {
+                    action = AtvService.ACTION_SET_MODE_TOGGLE
+                    putExtra(AtvService.EXTRA_BUTTON, selected)
+                }
+                startService(intent)
+
+                appendLog("[Config] 光标模式切换键: ${MODE_TOGGLE_OPTIONS[which]}")
+                updateUi()
+                Toast.makeText(this, "已设置: ${MODE_TOGGLE_OPTIONS[which]}", Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
             }
             .setNegativeButton("取消", null)

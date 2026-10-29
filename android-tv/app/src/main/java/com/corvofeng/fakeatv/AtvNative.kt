@@ -14,7 +14,12 @@ object AtvNative {
         fun onTouch(dx: Double, dy: Double, phase: Int)
         fun onAudio(volume: Double, muted: Boolean)
         fun onEvent(kind: String, detail: String)
+        fun onTrackpadModeChanged(mode: Int)
     }
+
+    // Trackpad modes as numbered by the core's TrackpadMode.
+    const val TRACKPAD_DIRECTION = 0
+    const val TRACKPAD_MOUSE = 1
 
     external fun nativeStartServer(
         name: String,
@@ -26,5 +31,6 @@ object AtvNative {
     ): Boolean
 
     external fun nativeStopServer()
+    external fun nativeSetTrackpadMode(mode: Int): Boolean
     external fun nativeIsRunning(): Boolean
 }

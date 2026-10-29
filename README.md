@@ -115,7 +115,7 @@ Download and extract `AppleTVRemote-windows-x86_64.zip` (or run `AppleTVRemote-w
 | **Volume +/-** | `KEYCODE_VOLUME_UP/DOWN` | Master volume + native HUD |
 | **Mute** | `KEYCODE_VOLUME_MUTE` | System mute |
 | **Side Siri key** | Voice search (`KEYCODE_SEARCH`) | Toggle cursor ⇄ D-pad / Siri |
-| **Power** | `GLOBAL_ACTION_POWER_DIALOG` | Display sleep / wake |
+| **Power** | Toggle cursor ⇄ D-pad (can be turned off in the app; then `KEYCODE_POWER`, or `GLOBAL_ACTION_POWER_DIALOG` through the Accessibility fallback) | Display sleep / wake |
 
 ---
 

@@ -76,6 +76,7 @@
                 <action android:name="com.mstar.android.intent.action.SUSPEND_RESUME" />
                 <action android:name="com.droidlogic.intent.action.STANDBY_WAKEUP" />
                 <action android:name="com.corvofeng.fakeatv.SET_MENU_BINDING" />
+                <action android:name="com.corvofeng.fakeatv.SET_MODE_TOGGLE" />
             </intent-filter>
         </receiver>
 

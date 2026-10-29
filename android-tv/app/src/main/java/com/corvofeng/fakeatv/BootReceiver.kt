@@ -27,6 +27,14 @@ class BootReceiver : BroadcastReceiver() {
             return
         }
 
+        if (action == AtvService.ACTION_SET_MODE_TOGGLE) {
+            val lower = (intent.getStringExtra(AtvService.EXTRA_BUTTON) ?: "none").lowercase().trim()
+            DeviceInfo.setModeToggleButton(context, lower)
+            KeyDispatcher.modeToggleButton = lower
+            Log.i(TAG, "Cursor mode toggle button updated via BootReceiver: $lower")
+            return
+        }
+
         val deviceName = DeviceInfo.getDeviceName(context)
         val serviceIntent = Intent(context, AtvService::class.java).apply {
             this.action = AtvService.ACTION_START
