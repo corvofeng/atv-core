@@ -185,6 +185,10 @@ pub extern "system" fn Java_com_corvofeng_fakeatv_AtvNative_nativeStartServer(
     config.pin = pin as u32;
     config.device_id = device_id_str;
     config.server_identifier = server_id_str;
+    // Derive the long-term key from the server identifier the app persists. The default key
+    // comes from a UUID file under $HOME, which an Android app process does not have, so it was
+    // new on every start and the iPhone's stored pairing stopped verifying after a reboot.
+    config.private_key = None;
     if let Some(ref s) = local_ip_str {
         if let Ok(ip) = s.parse::<Ipv4Addr>() {
             info!("using explicit local IP from Android: {ip}");
