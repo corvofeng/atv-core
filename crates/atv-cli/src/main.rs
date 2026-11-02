@@ -39,7 +39,7 @@ fn usage() -> ! {
            --device-id <MAC>              Hardware / MAC device ID (default: auto-detected hardware MAC)\n\
            --server-id <UUID>             Unique Server UUID (default: auto-detected hardware UUID)\n\
            --pin <PIN>                    4-digit pairing PIN (default: 1111)\n\
-           --ip <IPV4>                    Local IPv4 to advertise (auto-detected if omitted)\n\
+           --ip <IPV4>                    Local IPv4 shown in logs (auto-detected if omitted)\n\
            --mouse                        Initial mode: Trackpad mouse (default on macOS)\n\
            --direction, --dpad            Initial mode: Direction keys (D-pad)\n\
            --idle, --preview              Initial mode: Trackpad idle (preview trajectory only)\n\
