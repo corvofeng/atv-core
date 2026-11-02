@@ -1,8 +1,11 @@
-//! OPACK binary serialization, ported byte-for-byte from `fake_atv.py`
+//! OPACK binary serialization, ported from `fake_atv.py`
 //! (`opack_pack`/`_opack_pack` and `opack_unpack`/`_opack_unpack`).
 //!
 //! Notes on fidelity:
-//! * Integers are unsigned (the Python reference never encodes negatives).
+//! * `Value::Int` holds a u64. `pack` sizes integers the way Apple's CoreUtils does
+//!   (signed int8/16/32/64), unlike `fake_atv.opack_pack`, for 0x80-0xFF, 0x8000-0xFFFF
+//!   and 0x8000_0000-0xFFFF_FFFF. `unpack` reads sized integers unsigned, like the
+//!   reference, and never yields negatives.
 //! * `Float` unpacked from a 0x35 marker becomes a `Double`, like Python's
 //!   single `float` type; packing a `Double` always emits 0x36.
 //! * The object-reference table on unpack uses strict, type-aware equality
@@ -140,7 +143,8 @@ impl fmt::Display for OpackError {
 
 impl std::error::Error for OpackError {}
 
-/// Pack a value with OPACK, byte-identical to `fake_atv.opack_pack`.
+/// Pack a value with OPACK. Sized integers follow Apple's CoreUtils (see the module notes);
+/// everything else is byte-identical to `fake_atv.opack_pack`.
 pub fn pack(data: &Value) -> Vec<u8> {
     let mut objects: Vec<Vec<u8>> = Vec::new();
     pack_inner(data, &mut objects)
@@ -163,15 +167,19 @@ fn pack_inner(data: &Value, objects: &mut Vec<Vec<u8>>) -> Vec<u8> {
             out
         }
         Value::Int(i) => {
+            // Sized integers are signed (int8/16/32/64), as Apple's CoreUtils encodes and
+            // decodes them: a value with the top bit of its size set reads back negative on
+            // the iPhone. Its request ids (_x) are random over the whole u32 range, so an id
+            // >= 2^31 must go out in 8 bytes; in 4 the iPhone does not match the reply.
             if *i < 0x28 {
                 vec![(*i as u8) + 8]
-            } else if *i <= 0xFF {
+            } else if *i <= 0x7F {
                 vec![0x30, *i as u8]
-            } else if *i <= 0xFFFF {
+            } else if *i <= 0x7FFF {
                 let mut out = vec![0x31];
                 out.extend_from_slice(&(*i as u16).to_le_bytes());
                 out
-            } else if *i <= 0xFFFF_FFFF {
+            } else if *i <= 0x7FFF_FFFF {
                 let mut out = vec![0x32];
                 out.extend_from_slice(&(*i as u32).to_le_bytes());
                 out
