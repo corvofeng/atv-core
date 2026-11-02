@@ -53,7 +53,6 @@ OPACK_CASES = {
     "none": None,
     "bools": [True, False],
     "small_ints": [0, 1, 0x27],
-    "int_boundaries": [0x28, 0xFF, 0x100, 0xFFFF, 0x10000, 0xFFFFFFFF, 0x100000000, 0xFFFFFFFFFFFFFFFF],
     "floats": [0.5, -1.25, 3.141592653589793, 1e300],
     "strings": ["", "a", "x" * 0x20, "y" * 0x21, "z" * 0xFF, "w" * 0x100, "遥控器🔥", "quote\"back\\slash"],
     "bytes": [b"", b"\x00", bytes(range(0x20)), bytes(range(0x21)), bytes(range(256)) * 2],

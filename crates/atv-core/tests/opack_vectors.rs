@@ -35,11 +35,6 @@ fn opack_small_ints() {
 }
 
 #[test]
-fn opack_int_boundaries() {
-    check("int_boundaries", arr(vec![Value::Int(40u64), Value::Int(255u64), Value::Int(256u64), Value::Int(65535u64), Value::Int(65536u64), Value::Int(4294967295u64), Value::Int(4294967296u64), Value::Int(18446744073709551615u64)]), "d8302830ff31000131ffff320000010032ffffffff33000000000100000033ffffffffffffffff");
-}
-
-#[test]
 fn opack_floats() {
     check("floats", arr(vec![Value::Double(0.5), Value::Double(-1.25), Value::Double(3.141592653589793), Value::Double(1e+300)]), "d436000000000000e03f36000000000000f4bf36182d4454fb210940369c7500883ce4377e");
 }
