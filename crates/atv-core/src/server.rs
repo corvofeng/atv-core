@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 #[cfg(not(target_os = "macos"))]
-use mdns_sd::{ServiceDaemon, ServiceInfo};
+use mdns_sd::{IfKind, ServiceDaemon, ServiceInfo};
 use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{watch, Mutex};
@@ -55,7 +55,8 @@ pub struct AtvConfig {
     pub name: String,
     /// Four-digit pairing PIN (0-9999).
     pub pin: u32,
-    /// LAN IPv4 address to advertise; auto-detected when None.
+    /// IPv4 address shown in the logs; auto-detected when None. Bonjour is announced on every
+    /// IPv4 interface regardless.
     pub ip: Option<Ipv4Addr>,
     /// Trackpad mode: touch drives pointer deltas instead of direction keys (legacy boolean).
     pub mouse_mode: bool,
@@ -336,8 +337,17 @@ impl AtvServer {
         let mut mdns_fullnames = Vec::new();
         #[cfg(not(target_os = "macos"))]
         {
+            // The listeners accept IPv4 only, so no AAAA records: an iPhone that tried them
+            // would be refused.
+            mdns.disable_interface(IfKind::IPv6)
+                .map_err(|e| Error::Mdns(e.to_string()))?;
             let host_name = format!("{}.local.", identity.name.replace(' ', "-"));
             for (service_type, port, properties) in services {
+                // mdns-sd announces a service only on interfaces whose subnet holds one of its
+                // addresses. With `ip` alone that is a single interface picked at start: under
+                // an Android VPN it is the tunnel, and the iPhone on the LAN sees nothing.
+                // addr_auto adds every interface's own address and follows interfaces that
+                // come up later (Wi-Fi joining after boot, a reconnect).
                 let info = ServiceInfo::new(
                     service_type,
                     &identity.name,
@@ -346,10 +356,14 @@ impl AtvServer {
                     port,
                     &properties[..],
                 )
-                .map_err(|e| Error::Mdns(e.to_string()))?;
+                .map_err(|e| Error::Mdns(e.to_string()))?
+                .enable_addr_auto();
                 mdns_fullnames.push(info.get_fullname().to_string());
                 mdns.register(info).map_err(|e| Error::Mdns(e.to_string()))?;
-                info!("registered {}.{service_type} on {ip}:{port}", identity.name);
+                info!(
+                    "registered {}.{service_type} on all IPv4 interfaces, port {port}",
+                    identity.name
+                );
             }
         }
 
