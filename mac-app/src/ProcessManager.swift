@@ -85,7 +85,13 @@ final class ProcessManager {
     private func launchProcess(binaryUrl: URL, completion: @escaping (Bool) -> Void) {
         let p = Process()
         p.executableURL = binaryUrl
-        p.arguments = ["--target", "mac", "--pin", "1111", "--no-prompt"]
+        p.arguments = [
+            "--target", "mac",
+            "--pin", "1111",
+            "--no-prompt",
+            "--ui-port", String(AppConfig.uiPort),
+            "--web-port", String(AppConfig.webPort),
+        ]
 
         // Create log file handle
         let fm = FileManager.default

@@ -47,7 +47,8 @@ fn usage() -> ! {
            --speed <FLOAT>                Initial mouse speed multiplier (default: 0.5)\n\
            --verbose-events               Enable verbose terminal logging for buttons and events (default: quiet debug)\n\
            --debug, -d                    Enable debug-level logging for all protocol packets\n\
-           --ui-port <PORT>               Debug Web UI port (default: 8765)\n\
+           --ui-port <PORT>               Debug Web UI port (default: 38765, or ui_port in settings)\n\
+           --web-port <PORT>              Swift host diagnostics port used in links (default: 38766, or web_port in settings)\n\
            --no-ui                        Disable Debug Web UI\n\
            --open                         Automatically open Debug UI in default browser (default on Windows)\n\
            --no-open                      Do not open Debug UI automatically\n\
@@ -165,6 +166,13 @@ fn parse_args() -> CliArgs {
                     .and_then(|p| p.parse().ok())
                     .unwrap_or_else(|| usage());
                 config.ui_port = Some(port);
+            }
+            "--web-port" => {
+                let port: u16 = args
+                    .next()
+                    .and_then(|p| p.parse().ok())
+                    .unwrap_or_else(|| usage());
+                config.web_port = port;
             }
             "--no-ui" => config.ui_port = None,
             "--open" => open_browser = true,

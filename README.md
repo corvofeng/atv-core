@@ -161,9 +161,9 @@ The bridge forwards ports `49152/49153/49154` via `adb forward` and proxies the 
 
 ![Emulator bridge workflow](docs/images/en/emulator_operation_flow.svg)
 
-### macOS Web Inspector (port 8765)
+### macOS Web Inspector (port 38765)
 
-With the daemon or menu bar app running, open **`http://127.0.0.1:8765`**:
+With the daemon or menu bar app running, open **`http://127.0.0.1:38765`** (default; change it with `--ui-port` or `ui_port` in `~/.config/atv/settings.json`):
 
 ![macOS Web Inspector](docs/images/en/mac_browser_inspector.png)
 
@@ -172,14 +172,28 @@ With the daemon or menu bar app running, open **`http://127.0.0.1:8765`**:
 - Ballistics presets: `0.5x Precise`, `1.0x Standard`, `1.5x Fast`, `2.2x Ultra-Wide`.
 - Connected-device metadata and live volume telemetry.
 
-### macOS host diagnostics (port 8766)
+### macOS host diagnostics (port 38766)
 
-Open **`http://127.0.0.1:8766`** to inspect process health, port bindings, and live protocol handshakes:
+Open **`http://127.0.0.1:38766`** (default; change it with `web_port` in `~/.config/atv/settings.json`) to inspect process health, port bindings, and live protocol handshakes:
 
 ![macOS host diagnostics](docs/images/en/mac_debug_web_page.png)
 
 - Session tracing: Companion client connections, SRP auth, MRP encrypted channel init.
-- Process telemetry: Core API (`8765`), Web debug (`8766`), MediaRemote (`49152`), background PID, log filter, restart controls.
+- Process telemetry: Core API (`38765`), Web debug (`38766`), MediaRemote (`49152`), background PID, log filter, restart controls.
+
+### Port configuration
+
+Both the Rust core and the menu bar host read `~/.config/atv/settings.json` (or `$XDG_CONFIG_HOME/atv/settings.json`). Set these keys to avoid clashing with other local services:
+
+```json
+{
+  "mouse_speed": 0.50,
+  "ui_port": 38765,
+  "web_port": 38766
+}
+```
+
+Precedence: CLI flags (`--ui-port`, `--web-port`) override the settings file; the menu bar app always launches the core with the configured values. The MediaRemote/Companion ports (`49152`/`49153`) are fixed by the Apple TV protocol.
 
 ### Touchpad gestures & focus accumulation
 

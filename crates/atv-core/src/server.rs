@@ -30,6 +30,10 @@ use crate::FrameType;
 
 pub const MRP_PORT: u16 = 49152;
 pub const COMPANION_PORT: u16 = 49153;
+/// Default port for the Rust Debug Web UI / Inspector.
+pub const DEFAULT_UI_PORT: u16 = 38765;
+/// Default port for the Swift host diagnostics page (links from the UI).
+pub const DEFAULT_WEB_PORT: u16 = 38766;
 pub const SOURCE_VERSION: &str = "715.2";
 pub const DEFAULT_DEVICE_NAME: &str = "Mac Remote";
 
@@ -61,8 +65,10 @@ pub struct AtvConfig {
     pub mouse_mode: bool,
     /// Operating mode: Direction, Mouse, or Idle (preview only).
     pub trackpad_mode: TrackpadMode,
-    /// Port for Debug Web UI & Inspector (None to disable, default Some(8765)).
+    /// Port for Debug Web UI & Inspector (None to disable, default Some(38765)).
     pub ui_port: Option<u16>,
+    /// Port of the Swift host diagnostics page, used for links/redirects (default 38766).
+    pub web_port: u16,
     /// Initial mouse speed multiplier (default 0.5).
     pub mouse_speed: f64,
     /// Hardware / MAC-like identifier (e.g. "84:2F:57:2E:6C:EE").
@@ -94,7 +100,8 @@ impl Default for AtvConfig {
             ip: None,
             mouse_mode: initial_mode.is_mouse(),
             trackpad_mode: initial_mode,
-            ui_port: Some(8765),
+            ui_port: Some(settings.ui_port.unwrap_or(DEFAULT_UI_PORT)),
+            web_port: settings.web_port.unwrap_or(DEFAULT_WEB_PORT),
             mouse_speed: settings.mouse_speed,
             device_id: Some(identity.device_id),
             server_identifier: Some(identity.server_identifier),
@@ -201,10 +208,13 @@ impl AtvServer {
         )));
 
         let mut actual_ui_port = None;
+        let web_port = config.web_port;
         if let Some(ui_p) = config.ui_port {
             match TcpListener::bind((Ipv4Addr::UNSPECIFIED, ui_p)).await {
                 Ok(ui_listener) => {
                     actual_ui_port = Some(ui_p);
+                    let dashboard_html =
+                        Arc::new(DASHBOARD_HTML.replace("{WEB_PORT}", &web_port.to_string()));
                     tasks.push(tokio::spawn(ui_loop(
                         ui_listener,
                         inspector.clone(),
@@ -212,6 +222,8 @@ impl AtvServer {
                         trackpad_mode.clone(),
                         mouse_mode.clone(),
                         identity.name.clone(),
+                        web_port,
+                        dashboard_html,
                         shutdown_rx.clone(),
                     )));
                 }
@@ -722,6 +734,8 @@ async fn ui_loop(
     trackpad_mode: Arc<AtomicU8>,
     mouse_mode: Arc<AtomicBool>,
     device_name: String,
+    web_port: u16,
+    dashboard_html: Arc<String>,
     mut shutdown: watch::Receiver<bool>,
 ) {
     loop {
@@ -740,7 +754,17 @@ async fn ui_loop(
         let trackpad_mode = trackpad_mode.clone();
         let mouse_mode = mouse_mode.clone();
         let device_name = device_name.clone();
-        tokio::spawn(handle_ui_client(stream, inspector, delegate, trackpad_mode, mouse_mode, device_name));
+        let dashboard_html = dashboard_html.clone();
+        tokio::spawn(handle_ui_client(
+            stream,
+            inspector,
+            delegate,
+            trackpad_mode,
+            mouse_mode,
+            device_name,
+            web_port,
+            dashboard_html,
+        ));
     }
 }
 
@@ -751,6 +775,8 @@ async fn handle_ui_client(
     trackpad_mode: Arc<AtomicU8>,
     mouse_mode: Arc<AtomicBool>,
     device_name: String,
+    web_port: u16,
+    dashboard_html: Arc<String>,
 ) {
     use tokio::io::AsyncWriteExt;
 
@@ -771,7 +797,7 @@ async fn handle_ui_client(
 
     match (method, path) {
         ("GET", "/") | ("GET", "/index.html") => {
-            let body = DASHBOARD_HTML.as_bytes();
+            let body = dashboard_html.as_bytes();
             let header = format!(
                 "HTTP/1.1 200 OK\r\n\
                  Content-Type: text/html; charset=utf-8\r\n\
@@ -785,7 +811,9 @@ async fn handle_ui_client(
             let _ = stream.flush().await;
         }
         ("GET", "/debug") | ("GET", "/debug/") | ("GET", "/logs") => {
-            let resp = "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:8766/\r\nConnection: close\r\n\r\n";
+            let resp = format!(
+                "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{web_port}/\r\nConnection: close\r\n\r\n"
+            );
             let _ = stream.write_all(resp.as_bytes()).await;
         }
         ("GET", "/events") => {

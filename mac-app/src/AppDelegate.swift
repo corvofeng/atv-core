@@ -13,8 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AccessibilityHelper.checkAndPrompt(userInitiated: false)
         }
 
-        // Start native Swift Debug Web Server on port 8766
-        DebugWebServer.shared.start(port: 8766)
+        // Start native Swift Debug Web Server on the configured port (default 38766)
+        DebugWebServer.shared.start(port: AppConfig.webPort)
 
         // Start the atv-core Rust backend process if not already running
         ProcessManager.shared.startCoreIfNeeded { success in

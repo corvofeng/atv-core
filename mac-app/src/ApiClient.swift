@@ -33,7 +33,7 @@ struct ServerStatus: Codable {
 
 final class ApiClient {
     static let shared = ApiClient()
-    var baseUrl = "http://127.0.0.1:8765"
+    var baseUrl = "http://127.0.0.1:\(AppConfig.uiPort)"
 
     private let session: URLSession
 
@@ -117,7 +117,7 @@ final class ApiClient {
     }
 
     func openDebugPage() {
-        if let url = URL(string: "http://127.0.0.1:8766/") {
+        if let url = URL(string: "http://127.0.0.1:\(AppConfig.webPort)/") {
             NSWorkspace.shared.open(url)
         }
     }

@@ -7,17 +7,17 @@ final class DebugWebServer {
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.corvofeng.AppleTVRemote.DebugWebServer", qos: .userInitiated)
-    private(set) var port: UInt16 = 8766
+    private(set) var port: UInt16 = AppConfig.webPort
     private(set) var isRunning: Bool = false
 
     private init() {}
 
-    func start(port: UInt16 = 8766) {
+    func start(port: UInt16 = AppConfig.webPort) {
         guard !isRunning else { return }
         self.port = port
 
         do {
-            let nwPort = NWEndpoint.Port(rawValue: port) ?? 8766
+            let nwPort = NWEndpoint.Port(rawValue: port) ?? NWEndpoint.Port(rawValue: AppConfig.defaultWebPort)!
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
 
@@ -195,7 +195,7 @@ final class DebugWebServer {
             "log_path": logUrl.path,
             "size_bytes": size,
             "swift_host_port": port,
-            "core_api_port": 8765
+            "core_api_port": AppConfig.uiPort
         ]
         if let p = pid {
             dict["pid"] = p

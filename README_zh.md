@@ -161,9 +161,9 @@ python3 scripts/bridge_emulator.py stop         # 停止
 
 ![模拟器桥接工作流](docs/images/zh/emulator_operation_flow.svg)
 
-### macOS Web 控制面板（端口 8765）
+### macOS Web 控制面板（端口 38765）
 
-启动守护进程或菜单栏 App 后，浏览器访问 **`http://127.0.0.1:8765`**：
+启动守护进程或菜单栏 App 后，浏览器访问 **`http://127.0.0.1:38765`**（默认值；可用 `--ui-port` 或在 `~/.config/atv/settings.json` 里配置 `ui_port` 修改）：
 
 ![macOS Web Inspector](docs/images/zh/mac_browser_inspector.png)
 
@@ -172,14 +172,28 @@ python3 scripts/bridge_emulator.py stop         # 停止
 - 动力学预设：`0.5x 精准`、`1.0x 标准`、`1.5x 快速`、`2.2x 极速大屏`。
 - 已连接设备信息与实时音量遥测。
 
-### macOS 宿主诊断（端口 8766）
+### macOS 宿主诊断（端口 38766）
 
-访问 **`http://127.0.0.1:8766`** 查看进程健康、端口绑定与实时协议握手：
+访问 **`http://127.0.0.1:38766`**（默认值；可用 `~/.config/atv/settings.json` 里的 `web_port` 修改）查看进程健康、端口绑定与实时协议握手：
 
 ![macOS 宿主诊断](docs/images/zh/mac_debug_web_page.png)
 
 - 会话跟踪：Companion 客户端接入、SRP 认证、MRP 加密信道建立。
-- 进程遥测：核心 API（`8765`）、Web 调试（`8766`）、MediaRemote（`49152`）、后台 PID、日志过滤、重启控制。
+- 进程遥测：核心 API（`38765`）、Web 调试（`38766`）、MediaRemote（`49152`）、后台 PID、日志过滤、重启控制。
+
+### 端口配置
+
+Rust 核心与菜单栏宿主读取同一份 `~/.config/atv/settings.json`（或 `$XDG_CONFIG_HOME/atv/settings.json`）。端口和其他本机服务冲突时，配置这两个字段即可：
+
+```json
+{
+  "mouse_speed": 0.50,
+  "ui_port": 38765,
+  "web_port": 38766
+}
+```
+
+优先级：命令行参数（`--ui-port`、`--web-port`）高于配置文件；菜单栏 App 启动核心时自动传入配置值。MediaRemote / Companion 端口（`49152`/`49153`）由 Apple TV 协议固定，不可配置。
 
 ### 触摸板手势与焦点累加
 

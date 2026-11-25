@@ -560,14 +560,14 @@ enum DebugWebPage {
   <main>
     <header>
       <div class="header-left">
-        <a href="http://127.0.0.1:8765/" class="back-btn" title="返回遥控控制台 (Port 8765)">← 返回遥控面板 (8765)</a>
+        <a href="http://127.0.0.1:\(AppConfig.uiPort)/" class="back-btn" title="返回遥控控制台 (Port \(AppConfig.uiPort))">← 返回遥控面板 (\(AppConfig.uiPort))</a>
         <div>
           <h1>🛠️ Apple TV Remote 系统运行日志</h1>
-          <div class="subtitle">macOS Swift Host Web Service (Port 8766) · Runtime Logs & Process Diagnostics</div>
+          <div class="subtitle">macOS Swift Host Web Service (Port \(AppConfig.webPort)) · Runtime Logs & Process Diagnostics</div>
         </div>
       </div>
       <div class="header-right">
-        <div id="swiftBadge" class="badge swift-tag">⚡ Swift Web Server :8766</div>
+        <div id="swiftBadge" class="badge swift-tag">⚡ Swift Web Server :\(AppConfig.webPort)</div>
         <div id="serverBadge" class="badge">● 后台进程检查中...</div>
         <div id="clientBadge" class="badge">📱 手机状态检查中...</div>
       </div>
@@ -602,7 +602,7 @@ enum DebugWebPage {
             <span id="procPidBadge" style="color: var(--cyan);">PID: --</span>
           </div>
           <div class="diag-val">
-            <span>Core API: 8765 | Web Debug: 8766 | MRP: 49152</span>
+            <span>Core API: \(AppConfig.uiPort) | Web Debug: \(AppConfig.webPort) | MRP: 49152</span>
             <button class="copy-chip" onclick="restartCoreProcess()">重启引擎</button>
           </div>
         </div>
@@ -671,7 +671,7 @@ enum DebugWebPage {
     <!-- Footer API Docs -->
     <div class="card api-card">
       <div>
-        <strong>💡 Swift 宿主调试接口 (Swift API Endpoints on :8766):</strong>
+        <strong>💡 Swift 宿主调试接口 (Swift API Endpoints on :\(AppConfig.webPort)):</strong>
       </div>
       <div class="api-links">
         <a href="/api/logs?tail=300" target="_blank">/api/logs?tail=300 (JSON)</a>
@@ -830,9 +830,9 @@ enum DebugWebPage {
           $('procPidBadge').textContent = '未运行';
         }
 
-        // Also probe Rust core on 8765 if reachable
+        // Also probe Rust core on \(AppConfig.uiPort) if reachable
         try {
-          const coreRes = await fetch('http://127.0.0.1:8765/api/status', { mode: 'cors' });
+          const coreRes = await fetch('http://127.0.0.1:\(AppConfig.uiPort)/api/status', { mode: 'cors' });
           if (coreRes.ok) {
             const coreData = await coreRes.json();
             const cBadge = $('clientBadge');

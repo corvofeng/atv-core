@@ -19,6 +19,10 @@ pub struct UserSettings {
     pub trackpad_mode: Option<String>,
     pub mouse_accel: Option<bool>,
     pub verbose_events: Option<bool>,
+    /// Debug Web UI port override (default 38765).
+    pub ui_port: Option<u16>,
+    /// Swift host diagnostics port override (default 38766).
+    pub web_port: Option<u16>,
 }
 
 impl Default for UserSettings {
@@ -29,6 +33,8 @@ impl Default for UserSettings {
             trackpad_mode: None,
             mouse_accel: None,
             verbose_events: None,
+            ui_port: None,
+            web_port: None,
         }
     }
 }
@@ -112,6 +118,14 @@ impl UserSettings {
             settings.verbose_events = Some(verbose);
         }
 
+        if let Some(ui_port) = extract_u16(json, "ui_port") {
+            settings.ui_port = Some(ui_port);
+        }
+
+        if let Some(web_port) = extract_u16(json, "web_port") {
+            settings.web_port = Some(web_port);
+        }
+
         settings
     }
 
@@ -130,6 +144,12 @@ impl UserSettings {
         }
         if let Some(verbose) = self.verbose_events {
             fields.push(format!("  \"verbose_events\": {verbose}"));
+        }
+        if let Some(ui_port) = self.ui_port {
+            fields.push(format!("  \"ui_port\": {ui_port}"));
+        }
+        if let Some(web_port) = self.web_port {
+            fields.push(format!("  \"web_port\": {web_port}"));
         }
 
         format!("{{\n{}\n}}\n", fields.join(",\n"))
@@ -214,6 +234,17 @@ fn extract_float(json: &str, key: &str) -> Option<f64> {
     num_str.parse().ok()
 }
 
+/// Parse an integer port value; accepts either a JSON number (`38765`) or a
+/// quoted string (`"38765"`). Values outside 1..=65535 are ignored.
+fn extract_u16(json: &str, key: &str) -> Option<u16> {
+    let value = extract_float(json, key)
+        .or_else(|| extract_string(json, key).and_then(|s| s.parse::<f64>().ok()))?;
+    if value.fract() != 0.0 || value < 1.0 || value > u16::MAX as f64 {
+        return None;
+    }
+    Some(value as u16)
+}
+
 fn extract_bool(json: &str, key: &str) -> Option<bool> {
     let quoted = format!("\"{key}\"");
     let idx = json.find(&quoted)?;
@@ -284,6 +315,8 @@ mod tests {
             trackpad_mode: Some("mouse".into()),
             mouse_accel: Some(false),
             verbose_events: Some(true),
+            ui_port: Some(38765),
+            web_port: Some(38766),
         };
 
         settings.save_to(&tmp_file).expect("save should succeed");
@@ -295,9 +328,34 @@ mod tests {
         assert_eq!(loaded.trackpad_mode, Some("mouse".into()));
         assert_eq!(loaded.mouse_accel, Some(false));
         assert_eq!(loaded.verbose_events, Some(true));
+        assert_eq!(loaded.ui_port, Some(38765));
+        assert_eq!(loaded.web_port, Some(38766));
 
         let _ = fs::remove_file(&tmp_file);
         let _ = fs::remove_dir(&tmp_dir);
+    }
+
+    #[test]
+    fn test_parse_port_overrides() {
+        let json = r#"{ "mouse_speed": 0.5, "ui_port": 38765, "web_port": "38766" }"#;
+        let s = UserSettings::from_json(json);
+        assert_eq!(s.ui_port, Some(38765));
+        assert_eq!(s.web_port, Some(38766));
+    }
+
+    #[test]
+    fn test_invalid_ports_are_ignored() {
+        for json in [
+            r#"{ "ui_port": 0 }"#,
+            r#"{ "ui_port": 70000 }"#,
+            r#"{ "web_port": -1 }"#,
+            r#"{ "web_port": 1.5 }"#,
+            r#"{ "web_port": "abc" }"#,
+        ] {
+            let s = UserSettings::from_json(json);
+            assert_eq!(s.ui_port, None, "{json}");
+            assert_eq!(s.web_port, None, "{json}");
+        }
     }
 
     #[test]
