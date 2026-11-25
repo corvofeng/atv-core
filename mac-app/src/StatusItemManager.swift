@@ -329,6 +329,14 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
         debugItem.isEnabled = isOnline
         menu.addItem(debugItem)
 
+        let portItem = NSMenuItem(
+            title: "🔌 端口设置 (UI \(AppConfig.uiPort) / Web \(AppConfig.webPort))...",
+            action: #selector(onEditPorts),
+            keyEquivalent: ""
+        )
+        portItem.target = self
+        menu.addItem(portItem)
+
         let logFileItem = NSMenuItem(title: "📄 打开本地日志文件 (atv-core.log)...", action: #selector(onOpenLogFile), keyEquivalent: "")
         logFileItem.target = self
         menu.addItem(logFileItem)
@@ -470,6 +478,111 @@ final class StatusItemManager: NSObject, NSMenuDelegate {
 
     @objc private func onOpenLogFile() {
         ProcessManager.shared.openLogFile()
+    }
+
+    // MARK: - Port Configuration
+
+    @objc private func onEditPorts() {
+        let alert = NSAlert()
+        alert.messageText = "端口设置"
+        alert.informativeText = "修改后会写入 ~/.config/atv/settings.json，并自动重启后台服务与 Swift 诊断页。\n调试面板（Rust 核）默认 38765；诊断页（Swift 宿主）默认 38766。"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "保存并应用")
+        alert.addButton(withTitle: "取消")
+
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 64))
+
+        let uiLabel = NSTextField(labelWithString: "调试面板端口 (UI)：")
+        uiLabel.frame = NSRect(x: 0, y: 38, width: 130, height: 18)
+        let uiField = NSTextField(frame: NSRect(x: 135, y: 34, width: 120, height: 24))
+        uiField.stringValue = String(AppConfig.uiPort)
+
+        let webLabel = NSTextField(labelWithString: "诊断页端口 (Web)：")
+        webLabel.frame = NSRect(x: 0, y: 8, width: 130, height: 18)
+        let webField = NSTextField(frame: NSRect(x: 135, y: 4, width: 120, height: 24))
+        webField.stringValue = String(AppConfig.webPort)
+
+        accessory.addSubview(uiLabel)
+        accessory.addSubview(uiField)
+        accessory.addSubview(webLabel)
+        accessory.addSubview(webField)
+        alert.accessoryView = accessory
+
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        let uiText = uiField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let webText = webField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let uiPort = UInt16(uiText), uiPort > 0,
+              let webPort = UInt16(webText), webPort > 0 else {
+            showPortError("端口必须是 1-65535 之间的整数。")
+            return
+        }
+        guard uiPort != webPort else {
+            showPortError("两个端口不能相同。")
+            return
+        }
+
+        if !AppConfig.isPortAvailable(uiPort) || !AppConfig.isPortAvailable(webPort) {
+            let confirm = NSAlert()
+            confirm.messageText = "端口可能已被占用"
+            confirm.informativeText = "\(uiPort) 或 \(webPort) 目前无法绑定（可能被其他进程占用）。仍然保存吗？"
+            confirm.alertStyle = .warning
+            confirm.addButton(withTitle: "仍然保存")
+            confirm.addButton(withTitle: "取消")
+            NSApp.activate(ignoringOtherApps: true)
+            guard confirm.runModal() == .alertFirstButtonReturn else { return }
+        }
+
+        let previousWebPort = AppConfig.webPort
+        do {
+            let url = try AppConfig.save(uiPort: uiPort, webPort: webPort)
+            print("🔌 Ports updated: UI \(uiPort), Web \(webPort) -> \(url.path)")
+        } catch {
+            showPortError("写入配置失败：\(error.localizedDescription)")
+            return
+        }
+
+        applyPorts(previousWebPort: previousWebPort)
+    }
+
+    private func showPortError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "端口设置无效"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "好")
+        NSApp.activate(ignoringOtherApps: true)
+        _ = alert.runModal()
+    }
+
+    private func applyPorts(previousWebPort: UInt16) {
+        // Rebind the Swift diagnostics server when its port actually changed.
+        if AppConfig.webPort != previousWebPort {
+            DebugWebServer.shared.stop()
+            DebugWebServer.shared.start(port: AppConfig.webPort)
+        }
+
+        isBusy = true
+        updateStatusItemUI(running: false, connected: false, busy: true)
+        rebuildMenu()
+
+        ProcessManager.shared.restartService { [weak self] success in
+            DispatchQueue.main.async {
+                self?.isBusy = false
+                self?.isServiceRunning = success
+                self?.refresh()
+                self?.rebuildMenu()
+
+                let content = UNMutableNotificationContent()
+                content.title = success ? "🔌 端口已更新" : "❌ 端口已保存，但服务重启失败"
+                content.body = success
+                    ? "调试面板：http://127.0.0.1:\(AppConfig.uiPort) · 诊断页：http://127.0.0.1:\(AppConfig.webPort)"
+                    : "配置已写入，请检查端口是否被占用后手动重启服务。"
+                let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+                UNUserNotificationCenter.current().add(req, withCompletionHandler: nil)
+            }
+        }
     }
 
     @objc private func onCheckPermissions() {

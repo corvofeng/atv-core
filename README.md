@@ -195,6 +195,8 @@ Both the Rust core and the menu bar host read `~/.config/atv/settings.json` (or 
 
 Precedence: CLI flags (`--ui-port`, `--web-port`) override the settings file; the menu bar app always launches the core with the configured values. The MediaRemote/Companion ports (`49152`/`49153`) are fixed by the Apple TV protocol.
 
+On macOS you can also edit both ports from the menu bar: **🔌 端口设置 (UI / Web)…**. The host validates the input, writes the settings file, rebinds the diagnostics server and restarts the core automatically.
+
 ### Touchpad gestures & focus accumulation
 
 The Companion Link protocol streams high-frequency delta coordinates. `atv-core` turns them into grid focus shifts (Android TV) or accelerated cursor motion (macOS):

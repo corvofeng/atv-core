@@ -33,7 +33,11 @@ struct ServerStatus: Codable {
 
 final class ApiClient {
     static let shared = ApiClient()
-    var baseUrl = "http://127.0.0.1:\(AppConfig.uiPort)"
+    /// Follows the live port configuration, so editing ports in the menu bar
+    /// takes effect without rebuilding the client.
+    var baseUrl: String {
+        "http://127.0.0.1:\(AppConfig.uiPort)"
+    }
 
     private let session: URLSession
 

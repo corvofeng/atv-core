@@ -195,6 +195,8 @@ Rust 核心与菜单栏宿主读取同一份 `~/.config/atv/settings.json`（或
 
 优先级：命令行参数（`--ui-port`、`--web-port`）高于配置文件；菜单栏 App 启动核心时自动传入配置值。MediaRemote / Companion 端口（`49152`/`49153`）由 Apple TV 协议固定，不可配置。
 
+在 macOS 上也可以直接在状态栏菜单里修改：**🔌 端口设置 (UI / Web)…**。宿主会校验输入、写回配置文件、重新绑定诊断页端口并自动重启核心。
+
 ### 触摸板手势与焦点累加
 
 Companion Link 协议以高频流式发送增量坐标。`atv-core` 将其转换为网格焦点移动（Android TV）或带加速度的光标位移（macOS）：
